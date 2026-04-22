@@ -15,9 +15,10 @@
 - [x] **3.4** LLM 台词层：DeepSeek 主持人开场 / AI 中标反应 / 主持人终局总结 + 模板 fallback + 24 单元测试
 - [x] **Kai 话痨机制**：领先 / 反超 / 接近领先时必出声，凸显 FOMO 人设
 - [x] **v3 设计冻结**（多轮竞价）
+- [x] **3.6a** Discord 集成 [SKILL.md](./SKILL.md)（LLM 路由 + stdout 透传）
+- [ ] **3.6b** 部署 + Discord 端到端 + 录 demo
 - [ ] **v3 实现**（~8 h，分 Phase B–F）
 - [ ] **3.5** 图片资产
-- [ ] **3.6** Discord 集成（quick + standard 两模式）
 - [ ] **3.7** 实战 demo 录屏
 
 ---

@@ -73,9 +73,10 @@
   - [x] **3.4** LLM 台词层：DeepSeek 主持人开场 / AI 角色反应 / 主持人终局总结 + 模板 fallback + 24 单元测试 ✅
   - [x] **Kai 话痨机制**：Kai 领先/反超时必出声，让 FOMO 人设更鲜明 ✅
   - [x] **v3 设计冻结**：[GAME_DESIGN_v3.md](./skills/auction_king/GAME_DESIGN_v3.md) —— 多轮竞价 + 碾压阈值（1.8 / 1.5 / 1.2）+ AI 反应式策略 🆕
+  - [x] **3.6a** Discord 集成 SKILL.md：[SKILL.md](./skills/auction_king/SKILL.md) 写完，LLM 路由 + stdout 透传模式 🆕
+  - [ ] **3.6b** 部署到 OpenClaw workspace + Discord 端到端跑通 + 录 demo
   - [ ] **v3 实现**：state + AI `decide_sub_round_action` + `cmd_withdraw` + narration 扩展（~8 h）
   - [ ] **3.5** 图片资产
-  - [ ] **3.6** Discord 集成（quick + standard 两种模式）
   - [ ] **3.7** 实战 demo 录屏
 
 ### 阶段 3 阶段性成果（3.4 完成时）
