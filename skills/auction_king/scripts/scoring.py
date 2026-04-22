@@ -1,9 +1,10 @@
 """
-终局积分榜计算。
+终局积分榜计算（+ 可选 LLM 主持人总结）。
 """
 
 from __future__ import annotations
 
+import llm_narrator
 from items import Item, find_item, load_library
 
 
@@ -116,5 +117,17 @@ def format_scoreboard(scores: dict, state: dict) -> str:
             lines.append(
                 f"😱 最惨接盘：{state['players'][pid]['display']} 的【{item_name}】 ${profit}"
             )
+
+    host_summary = llm_narrator.llm_final_summary(
+        ranking=scores["ranking"],
+        best_roi=scores["best_roi"],
+        worst_loss=scores["worst_loss"],
+    )
+    if host_summary:
+        lines.append("")
+        lines.append("🎙️ 主持人总结：")
+        for para in host_summary.split("\n"):
+            if para.strip():
+                lines.append(f"> {para.strip()}")
 
     return "\n".join(lines)

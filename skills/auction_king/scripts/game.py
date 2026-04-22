@@ -33,6 +33,7 @@ from narration import (
     build_intro,
     build_reveal,
     build_round_header,
+    enhance_line_with_llm,
     pick_round_speaker,
 )
 from scoring import compute_final_scores, format_scoreboard
@@ -105,6 +106,20 @@ def _resolve_round(state: dict) -> str:
         is_human_winner=(winner == HUMAN_ID),
         rng=speaker_rng,
     )
+
+    if speaker and line:
+        speaker_bid = bids.get(speaker, 0)
+        line = enhance_line_with_llm(
+            speaker=speaker,
+            fallback_line=line,
+            item=item,
+            round_num=state["current_round"],
+            total_rounds=state["config"]["max_rounds"],
+            speaker_bid=speaker_bid,
+            winner=winner or "",
+            winning_bid=winning_bid,
+            players=state["players"],
+        )
 
     round_record = {
         "item_id": item.id,
@@ -202,7 +217,9 @@ def cmd_start(args: argparse.Namespace) -> str:
     )
     save_state(args.session, state)
 
-    opponents = [state["players"][n] for n in state["active_ais"]]
+    opponents = [
+        {**state["players"][n], "name": n} for n in state["active_ais"]
+    ]
     intro = build_intro(
         max_rounds=state["config"]["max_rounds"],
         budget=state["config"]["initial_budget"],

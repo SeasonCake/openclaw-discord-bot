@@ -67,15 +67,30 @@
 - **千万别在消息里粘贴 CSV 文本内容**，会撑爆 context window（131k tokens）；只用附件
 - 触发 skill 的最可靠姿势：**只附件 + 简短 prompt**，不要同时粘贴文本内容
 
-- [ ] **阶段 3**：`auction_king` skill（单人暗标 + 仓库英式叫价混合博弈）
-  - [x] **3.1** 设计冻结：[GAME_DESIGN.md](./skills/auction_king/GAME_DESIGN.md) v2.0（7 轮 / $2000 / 5 AI 抽 3 / 陷阱机制）
-  - [x] **3.2a** 暗标核心跑通：5 AI 公式 + CLI 7 轮完整游戏 + 15 单元测试 + 100 局 simulate ✅
-  - [ ] **3.2b** 仓库英式叫价 + 阿鬼陷阱分阶段
-  - [ ] **3.3** AI 平衡调参
-  - [ ] **3.4** LLM 台词层（模板 → DeepSeek）
+- [ ] **阶段 3**：`auction_king` skill（单人竞拍对局 skill）
+  - [x] **3.1** v2 设计冻结：[GAME_DESIGN.md](./skills/auction_king/GAME_DESIGN.md)（7 轮 / $2000 / 5 AI 抽 3）
+  - [x] **3.2a** 暗标核心跑通：5 AI 公式 + CLI 完整游戏 + 15 单元测试 + 100 局 simulate ✅
+  - [x] **3.4** LLM 台词层：DeepSeek 主持人开场 / AI 角色反应 / 主持人终局总结 + 模板 fallback + 24 单元测试 ✅
+  - [x] **Kai 话痨机制**：Kai 领先/反超时必出声，让 FOMO 人设更鲜明 ✅
+  - [x] **v3 设计冻结**：[GAME_DESIGN_v3.md](./skills/auction_king/GAME_DESIGN_v3.md) —— 多轮竞价 + 碾压阈值（1.8 / 1.5 / 1.2）+ AI 反应式策略 🆕
+  - [ ] **v3 实现**：state + AI `decide_sub_round_action` + `cmd_withdraw` + narration 扩展（~8 h）
   - [ ] **3.5** 图片资产
-  - [ ] **3.6** Discord 集成
+  - [ ] **3.6** Discord 集成（quick + standard 两种模式）
   - [ ] **3.7** 实战 demo 录屏
+
+### 阶段 3 阶段性成果（3.4 完成时）
+
+**已落地**：
+- 5 人格 AI 池（老周头 / Kai / 艺姐 / 阿鬼 / Miles）随机抽 3，确定性种子。
+- 7 轮暗标单局可玩，CLI `start / bid / status / end / simulate` 齐全。
+- DeepSeek LLM 台词层：开场 host 词 + 逐轮中标者角色台词 + 终局 host 总结；`DEEPSEEK_API_KEY` 缺失时 fallback 到模板，**不崩**。
+- 39 单元测试（15 AI 出价 + 24 LLM narrator）全绿。
+
+**设计已冻结、待实现（v3）**：
+- **两种模式并存**：`quick`（当前 v2/3.4）和 `standard`（v3 多轮）。
+- **多轮竞价**：每件物品最多 4 sub_round，每轮后揭晓出价并支持退出。
+- **碾压阈值**：R1 ≥ 次高 ×1.8 / R2 ×1.5 / R3 ×1.2 立刻终结，让"孤注一掷"成为真实策略。
+- **AI 反应式策略**：阿鬼陷阱前抬后撤、Miles 前装睡后狙击、Kai FOMO 跟进 —— 真正在决策层面展开，而不只是台词。
 
 ## 当前已知的小问题（不影响推进）
 
@@ -103,12 +118,13 @@ openclaw-wechat-bot/
     │   │   └── analyze.py   ← pandas EDA 脚本（编码回退 utf-8/gbk/latin-1）
     │   └── assets/
     │       └── sample.csv   ← 测试数据
-    └── auction_king/        ← 阶段 3 进行中（3.2a 完成）
-        ├── GAME_DESIGN.md   ← v2.0 设计真相源
-        ├── README.md        ← skill 内部进度 + 命令速查
-        ├── data/items.json  ← 16 单件 + 3 仓库
-        ├── scripts/         ← game.py + ai_bidders.py + 4 个辅助模块
-        └── tests/           ← 15 个 AI 出价单元测试
+    └── auction_king/        ← 阶段 3 进行中（3.4 完成 / v3 设计冻结）
+        ├── GAME_DESIGN.md          ← v2 设计（快速模式来源）
+        ├── GAME_DESIGN_v3.md       ← v3 设计：多轮竞价 + 碾压阈值 + AI 反应式策略 🆕
+        ├── README.md              ← skill 内部进度 + 命令速查
+        ├── data/items.json        ← 16 单件 + 3 仓库
+        ├── scripts/               ← game.py + ai_bidders.py + llm_narrator.py + narration.py + scoring.py ...
+        └── tests/                 ← 39 单元测试（15 AI 出价 + 24 LLM narrator）
 ```
 
 ## 日常启动流程

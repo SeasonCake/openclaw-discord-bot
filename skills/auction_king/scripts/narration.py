@@ -1,14 +1,15 @@
 """
-台词生成（template-based，v1）。
+台词生成（v3.4：template + 可选 LLM 层）。
 
-3.2a 阶段：纯模板，零 LLM 调用。
-3.4 阶段：加 --use-llm 旗标，改接 DeepSeek 生成台词。
-设计好接口：llm 版只需要实现同样签名的函数。
+- 默认走模板，100% 可预测、可离线跑。
+- 当 env `AUCTION_KING_USE_LLM=1` 时，开场/揭晓/终局三处优先用 DeepSeek 生成，失败自动回退模板。
 """
 
 from __future__ import annotations
 
 import random
+
+import llm_narrator
 
 # ============================================================================
 # 每个角色的台词池（按情境分）
@@ -24,6 +25,9 @@ LINES_WIN = {
         "Let's go! 这 deal 不拿回家对不起我的 FOMO。",
         "All in 才是 playmaker 的姿态。",
         "Classic undervalued asset，我 bet right 了。",
+        "Moat 建立，下一轮继续扩张版图。",
+        "老子就是喜欢这种 asymmetric upside。",
+        "嘿嘿，这波 IRR 稳了。",
     ],
     "艺姐":   [
         "……（轻轻点头，没说话）",
@@ -50,6 +54,8 @@ LINES_NEAR_MISS = {
     "Kai":    [
         "差一点啊！should have pushed harder.",
         "下一轮绝对不能再被抢！",
+        "Damn，timing off by a hair，下轮见。",
+        "没关系，这是 long game，别盯着一单 loss。",
     ],
     "艺姐":   [
         "……",
@@ -131,19 +137,31 @@ def pick_round_speaker(
     """
     决定本轮谁说话 + 说什么。返回 (speaker_name, line)。
     speaker_name == "" 表示本轮无人发言。
+
+    优先级：
+    0. **Kai 话痨机制**：只要 Kai 出场在 top-2（中标或差一点），必说话。
+    1. 中标 AI 炫耀（70%）
+    2. 差点中标的 AI 遗憾（额外 18%）
+    3. 艺姐毒舌旁观（额外 7%）
+    4. 静默（~5%）
     """
-    # 优先级：中标的 AI 炫耀 → 差点中标的 AI 遗憾 → 艺姐毒舌 → 静默
+    # ---- Kai 话痨专属规则（最高优先级）----
+    if winner == "Kai":
+        return "Kai", rng.choice(LINES_WIN.get("Kai", ["Kai：……"]))
+    if second_bidder == "Kai" and "Kai" in active_ais:
+        return "Kai", rng.choice(LINES_NEAR_MISS.get("Kai", ["Kai：……"]))
+
     roll = rng.random()
 
-    if not is_human_winner and roll < 0.60:
+    if not is_human_winner and winner and roll < 0.70:
         lines = LINES_WIN.get(winner, [f"{winner}：……"])
         return winner, rng.choice(lines)
 
-    if second_bidder and second_bidder in active_ais and second_bidder != winner and roll < 0.80:
+    if second_bidder and second_bidder in active_ais and second_bidder != winner and roll < 0.88:
         lines = LINES_NEAR_MISS.get(second_bidder, [f"{second_bidder}：……"])
         return second_bidder, rng.choice(lines)
 
-    if "艺姐" in active_ais and roll < 0.90:
+    if "艺姐" in active_ais and "艺姐" != winner and roll < 0.95:
         return "艺姐", rng.choice(LINES_YIJIE_SNARK)
 
     return "", ""
@@ -153,11 +171,50 @@ def build_intro(max_rounds: int, budget: int, opponents: list[dict]) -> str:
     lines = []
     for o in opponents:
         lines.append(f"  · **{o['display']}** — {o['persona']}")
-    return INTRO_TEMPLATE.format(
+    base = INTRO_TEMPLATE.format(
         max_rounds=max_rounds,
         budget=budget,
         opponents="\n".join(lines),
     ).replace("{total}}", f"{max_rounds}")  # no-op, kept for safety
+
+    llm_text = llm_narrator.llm_intro(max_rounds, budget, opponents)
+    if llm_text:
+        return f"{base}\n\n🎙️ 主持人：\n> {llm_text}"
+    return base
+
+
+def enhance_line_with_llm(
+    speaker: str,
+    fallback_line: str,
+    item,
+    round_num: int,
+    total_rounds: int,
+    speaker_bid: int,
+    winner: str,
+    winning_bid: int,
+    players: dict,
+) -> str:
+    """
+    给 pick_round_speaker 已经选好的 (speaker, fallback_line) 加 LLM 润色。
+    任何情况失败都返回 fallback_line。
+    """
+    if not speaker or not fallback_line:
+        return fallback_line
+    if not llm_narrator.is_enabled():
+        return fallback_line
+    winner_display = players.get(winner, {}).get("display", winner)
+    llm_line = llm_narrator.llm_round_line(
+        speaker=speaker,
+        item_name=item.name,
+        item_category=getattr(item, "display_category", item.category or "杂项"),
+        round_num=round_num,
+        total_rounds=total_rounds,
+        speaker_bid=speaker_bid,
+        winner_display=winner_display,
+        winning_bid=winning_bid,
+        is_winner=(speaker == winner),
+    )
+    return llm_line or fallback_line
 
 
 def format_hints(hints: list[str]) -> str:
