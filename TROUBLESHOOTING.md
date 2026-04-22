@@ -848,7 +848,85 @@ Kai 反超了！要加价到 $936+，还是放弃？
 
 ---
 
-## 总结：如果再来一次，最重要的 11 条
+## 13. `csv_analyzer` 图片双发：OpenClaw 在 Windows CRLF 下解析 fenced code block 的 bug
+
+> 场景：`csv_analyzer` 在 Discord 上每次生成 EDA 图表都**回传两张一模一样的 PNG**。前两次修法都没对症——第一次以为是 `plot.py` 的 stdout echo 了路径被 channel 扫到，删掉 path echo 后**还是双发**；第二次以为是 LLM 在 reply 里写了两次 `MEDIA:`，把 `SKILL.md` 的 reply 模板改成"只许一条 `MEDIA:` 线"后**还是双发**。
+
+### 真正的根因（和预期完全不一样）
+
+OpenClaw 2026.4.15 的 `pi-embedded-runner` 会**扫描每一次工具调用的 stdout/输出文本**，从中提取 `MEDIA:<path>` 指令并队列到 `state.pendingToolMediaUrls`；等到最终 reply 的 `MEDIA:<path>` 到来时，用 `new Set([...final, ...pending])` 合并——**不同字符串的 path 不会被 Set 去重**。
+
+这个"扫描工具输出"的逻辑**本来**会被 markdown fence 保护（源码 `parse-CwkQk8aD.js` 里 `parseFenceSpans` → `isInsideFence` 把 ` ``` ` 之间的行跳过不扫）。但它有一个**关键 bug**：fence 检测的正则是 `/^( {0,3})(`{3,}|~{3,})(.*)$/`——**没有加 `m` flag 且 `.` 不匹配 `\r`**，所以任何 CRLF 行尾的 ` ``` ` 都匹配不上，parseFenceSpans **直接返回 0 个 fence span**，整个文件被当成"没有任何 fence"扫一遍。
+
+于是事情变成这样：
+
+1. 用户上传 CSV，LLM 调用 `read SKILL.md` 加载技能说明
+2. `SKILL.md` 里有一行 reply 模板示例（在 ` ``` ` 里）写着 `MEDIA:C:\Users\shenc\.openclaw\media\inbound\b4c90b0e-..._eda.png`
+3. Fence 检测炸了（CRLF bug），示例 path 被当成真的 MEDIA 指令提取，塞进 `pendingToolMediaUrls`
+4. LLM 继续跑 `plot.py`，最终 reply 写了 `MEDIA:C:\Users\shenc\.openclaw\media\inbound\67bfd1f2-..._eda.png`（真的 path）
+5. `consumePendingToolMediaIntoReply` 合并：`Set(["67bfd1f2-...eda.png", "b4c90b0e-..._eda.png"])`——**两个不同字符串**，Set 根本不 dedupe
+6. 两个 URL 都进 `sendMediaWithLeadingCaption` 的 for 循环，每个都 `loadWebMedia + saveMediaBuffer` 存一个 outbound UUID file，发两次 Discord 附件
+
+### 诊断过程（走了多少弯路）
+
+- **错误假设 #1**：`plot.py` 的 stdout 里 echo 了 `print(f"EDA 图表已生成：{output}")`，channel 从 stdout 捞到路径又附件一次。删掉这行 print 后——**还是双发**
+- **错误假设 #2**：LLM 在 reply 里写了两次 `MEDIA:`。把 `SKILL.md` 改成"模板里只允许一条 `MEDIA:` 线"——**还是双发**
+- **错误假设 #3**：OpenClaw 的 Discord 插件有更底层的自动扫描机制，比如监控 `inbound/` 目录新文件。**验证方法**：看 `~/.openclaw/media/outbound/` 有几个 PNG——确实是**两个同字节的 UUID PNG，同一秒写入**
+- **转折点**：扒 OpenClaw 源码（`node_modules/openclaw/dist/parse-CwkQk8aD.js` + `pi-embedded-runner-DN0VbqlW.js`），找到 `collectEmittedToolOutputMediaUrls` 会扫所有工具的 stdout
+- **坐实 root cause**：写了个 10 行的 node 脚本，直接 import `splitMediaFromOutput` 跑 deployed SKILL.md——返回 `mediaUrls.length === 1`，里面就是那个 `b4c90b0e-..._eda.png` 的示例 path。再跑一遍 `parseFenceSpans`——返回 **0 fence spans**（但源文件有 6 个 ` ``` `）
+- **最小可复现 demo**：`"```\r".match(/^( {0,3})(`{3,}|~{3,})(.*)$/) === null`——JavaScript 默认 `.` 不匹配 `\r`，这条 regex 在 Windows CRLF 文件里永远匹配不到 `\r\n` 的关闭行
+
+### 修法（两层防御）
+
+**第一层（内容层，治本）**：把 `SKILL.md` 所有 `MEDIA:<有扩展名的真实 Windows path>` 示例全部替换成 `<...>` 占位符。示例永远不要写可被 `isValidMedia()` 当真的字符串——任何带 `.png` / `.jpg` 扩展名、且符合 `C:\...` / `/...` 格式的，都会在 fence bug 触发时被解析成真指令。
+
+**第二层（编码层，兜底）**：长期看文件应该存成 LF 换行——但 `robocopy` + `git` + PowerShell 默认都是 CRLF，强行切 LF 容易反复回归。所以我们不依赖这层，只用第一层。
+
+**验证姿势**：
+
+```powershell
+# 从 workspace 读 deployed SKILL.md，跑 OpenClaw 自己的 parser
+# 如果有任何 mediaUrls 被提取出来，就是 bug 还在
+node -e "
+import('file:///C:/Users/shenc/AppData/Roaming/npm/node_modules/openclaw/dist/parse-DUsQk5Kg.js')
+  .then(m => {
+    const fs = require('fs');
+    const txt = fs.readFileSync('C:/Users/shenc/.openclaw/workspace/skills/csv_analyzer/SKILL.md', 'utf8');
+    const r = m.splitMediaFromOutput(txt);
+    console.log('leaked urls:', JSON.stringify(r.mediaUrls || []));
+  })
+"
+# 预期输出：leaked urls: []
+```
+
+### 教训
+
+- **不要在 SKILL.md 里写看起来像真指令的示例**。LLM 读 SKILL.md 时，OpenClaw 会扫它 stdout 找 `MEDIA:`。任何看起来像真 path 的字符串（有扩展名、有 `C:\` 前缀、不含空格）都有可能**被当成真指令注入**到当前 turn 的 outbound 队列里。占位符要用 `<...>` / 带空格 / 无扩展名
+- **不是每次"我改了还复现"都意味着改的方向错**——有时候改对了但改小了。这次我前两次修的 `plot.py stdout` 和 reply template 都是**正确的护栏**（长期该保留），只是**不是根因**。根因在 SKILL.md 自己的示例上+框架 fence 检测 bug
+- **扒框架源码比猜更快**。`pi-embedded-runner` + `parse-CwkQk8aD.js` 加起来 400 行看完，root cause 自动浮出来；之前在"外部行为"层面瞎猜一下午没进展
+- **写 10 行 node 脚本直接跑框架的 parser** 是最稳的 bug 定位法。看 `send` / `deliver` / `dispatch` 的源码调用链容易绕晕，但直接把问题输入喂进真正的 parser 函数、看它输出什么，结论立判
+- **Windows 上任何跨文件格式边界的事情都要先问 CRLF**。`\r` 是 Windows 生态里最喜欢躲在一米之外朝你开冷枪的字符——正则、JSON parser、shell here-doc、Python `readlines()`、Git diff...踩过八百次还是容易忘
+
+### 上游 bug 记一笔
+
+OpenClaw 2026.4.15 `dist/fences-u7A-b4Xc.js` 的 `parseFenceSpans` 应该改成：
+
+```js
+// 当前（broken on CRLF）
+const match = line.match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
+
+// 修法 A：先 trimEnd line 再 match
+const match = line.replace(/\r$/, "").match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
+
+// 修法 B：regex 允许 \r
+const match = line.match(/^( {0,3})(`{3,}|~{3,})(?:[^\r\n]*)\r?$/);
+```
+
+够一条上游 PR 了，等这个项目整体稳定后可以提。
+
+---
+
+## 总结：如果再来一次，最重要的 12 条
 
 1. **装 OpenClaw 前**：确认 `node --version` ≥ 22.14 **且** `where.exe node` 第一条就是系统 Node，不是 Anaconda
 2. **API key**：用 `[Environment]::SetEnvironmentVariable(... .Trim(), "User")`，**长度验证**，**永不贴聊天**
@@ -861,7 +939,8 @@ Kai 反超了！要加价到 $936+，还是放弃？
 9. **State machine 写 history 要存完整 pool（不是只存增量）**；真实 playthrough 能挖出单元测试漏掉的 state 遗漏 bug；simulate/batch 前显式设 `USE_LLM=0`
 10. **SKILL.md 反 LLM 泄漏**：抽象规则（"no commentary"）无效；把真实观察到的 bad output 原文贴进去作 ❌ 反例效果最强；UX 和延迟常常同源，砍掉冗余推理同时修两件事
 11. **LLM 行为护栏分三层，不能合并**：工具前要"零字符"、工具后要"完整粘贴"、出错时要"一句问"。命名成三条独立规则（ZERO-PREAMBLE / VERBATIM PASTE / ERROR RECOVERY）各自配 ❌ 反例，不要用一条大规则兜底——LLM 会把它 collapse 成"啥都少说"顺带 paraphrase 掉你最想保留的 CLI 结构。Error path ≠ happy path，各自 audit。真人玩一局 5/5 件 > 跑 100 个单元测试。
+12. **SKILL.md 示例里不要写任何长得像"真指令"的字符串**：OpenClaw 会扫所有工具（包括 `read`）的输出找 `MEDIA:`，Windows CRLF 下 fence 检测 bug 会把 fenced 示例当真提取。占位符必须明显不是真 path（用 `<...>`、带空格、无扩展名），否则两个不同 path 会同时进 outbound 队列、Set 不 dedupe、Discord 收到双发附件。任何"我改了还复现"先扒框架源码、写 10 行 node 脚本直跑 parser——比猜行为快一个数量级。
 
 ---
 
-*最后更新：2026-04-22 晚 —— `auction_king` v3 C 阶段（standard 模式多轮竞价）+ Discord 连续 3 晚迭代反 LLM 泄漏 / auto-restart / paraphrase，补充第 12 节（含 12.5、12.6）并把 scoreboard 截图归档到 `skills/auction_king/assets/screenshots/`。*
+*最后更新：2026-04-23 凌晨 —— 第 13 节：`csv_analyzer` Discord 图片双发，定位到 OpenClaw `parseFenceSpans` 在 Windows CRLF 下的 regex bug + `SKILL.md` 示例 path 被 `read` 工具输出扫描当真提取。修法是把示例里 `MEDIA:` 的真实 path 全换成占位符，并给上游留了一条 PR 建议。*

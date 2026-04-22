@@ -165,23 +165,28 @@ Rules for the `MEDIA:` line:
 - Path must be the same absolute path you passed to `--output`
 - Do **not** wrap it in backticks, quotes, or code fences
 
-Example (✅ correct shape):
+Example of the correct reply shape (schematic — replace `<...>` with real content, do not copy literally):
 
 ```
-已生成 10 面板 EDA 图（90 行 × 77 列，识别出 4 组 one-hot 编码：Orbit / LaunchSite / LandingPad / Serial）。载荷质量分布呈双峰（轻载 <2000kg 和重载 >10000kg），Block 与 FlightNumber 相关性 0.93。
+<1-2 sentence summary: row count × col count, most salient finding or two>
 
-MEDIA:C:\Users\shenc\.openclaw\media\inbound\b4c90b0e-..._eda.png
+<2-4 one-line bullets for the key findings>
 
-要看哪一块的细节？比如 payload 随时间趋势，或者不同 orbit 的载荷分布？
+MEDIA:<absolute PNG path — same string you passed to --output>
+
+<one follow-up question>
 ```
+
+> **Note for the LLM reading this file:** the block above is a schema, not a real reply. Do **not** copy literal paths or example text into your reply. Fill every `<...>` placeholder with content derived from the actual dataset. The `MEDIA:` line must use the real `--output` path you passed on this turn.
 
 Anti-patterns (each one observed + broke UX):
 
 - ❌ Running `plot.py` twice "to be safe" — deterministic, wastes tokens, no benefit
-- ❌ Writing the path twice (once as `MEDIA:<path>` and once again as sentence content like `图表保存在 C:\...\xxx_eda.png`) — the second mention doesn't trigger upload but looks ugly. Just use `MEDIA:` once.
-- ❌ Emitting the `MEDIA:` line twice pointing to the same file — **this does trigger double upload** (each `MEDIA:` line is one attach)
+- ❌ Writing the path twice (once as the `MEDIA:` directive and once again as sentence content) — looks ugly, just use one `MEDIA:` line
+- ❌ Emitting the `MEDIA:` line twice pointing to the same file — **this triggers double upload** (each `MEDIA:` line is one attach)
 - ❌ Adding FUD like "图中中文可能显示为方框" — `plot.py` handles CJK correctly, don't pre-apologize
 - ❌ Mentioning `pip install` or font issues — skill handles everything
+- ❌ Copying literal example paths from this SKILL.md (e.g. `b4c90b0e-...`) into your reply — those are placeholders, not real paths
 
 ---
 
@@ -222,4 +227,4 @@ User drags `sales.csv` into Discord with `@bot 帮我看看并画图`.
    >
    > EDA 图表已生成（8 面板），附件见下。要不要我按 category 拆一下销售额和利润率？
 
-4. The `MEDIA:C:\...\sales_eda.png` line in your reply is what triggers Discord to attach the PNG. Exactly one such line. The rest of the reply is plain chat text.
+4. The single `MEDIA:` line (using the exact absolute `--output` path) is what triggers Discord to attach the PNG. Exactly one such line per reply. The rest of the reply is plain chat text.
