@@ -1,6 +1,6 @@
 ---
 name: auction_king
-description: Turn-based single-player sealed-bid auction game against 3 randomly drawn AI opponents (from a 5-persona pool). ALWAYS use this skill when the user says "开一局 / 开始拍卖 / 玩 auction / 玩竞拍 / 拍卖游戏 / auction king / start auction / 一局 / 新游戏 / 出价 / bid / 拍卖 / 来一把 / 再来一局 / 竞拍 / 现在什么情况 / scoreboard / 排名 / 终局". The game is fully deterministic Python — this skill is a thin router that spawns CLI commands and returns their stdout to the user; the CLI output already contains LLM-generated host narration, AI character lines, and scoreboard.
+description: Turn-based single-player auction game against 3 randomly drawn AI opponents (from a 5-persona pool). Supports TWO modes — quick (v2, 7-round sealed-bid, default) and standard (v3, 4-5 items × up to 4 sub-rounds of reactive bidding with squash thresholds and withdraw). ALWAYS use this skill when the user says "开一局 / 开始拍卖 / 玩 auction / 玩竞拍 / 拍卖游戏 / auction king / start auction / 一局 / 新游戏 / 出价 / 加价 / bid / raise / 拍卖 / 来一把 / 再来一局 / 竞拍 / 标准模式 / standard 模式 / v3 / 多轮竞价 / 退出 / withdraw / 跳过这件 / 现在什么情况 / scoreboard / 排名 / 终局". The game is fully deterministic Python — this skill is a thin router that spawns CLI commands and returns their stdout to the user; the CLI output already contains LLM-generated host narration, AI character lines, sub-round reveals, and scoreboard.
 metadata:
   openclaw:
     requires:
@@ -27,15 +27,17 @@ This skill is a **router**, not a narrator. The game CLI (`game.py`) handles eve
 **Strong triggers** (run the skill immediately):
 
 - 开局 / 开始 / 新游戏 / 开一局 / 来一把 / 再来一局 / 重开
-- 出价 / 我出 / 报价 / bid / raise
+- 出价 / 我出 / 报价 / bid / raise / 加价
+- 退出 / 这件不要了 / 放弃这件 / withdraw / 跳过这件（standard 模式）
 - 状态 / 现在什么情况 / 现在哪一轮 / 剩多少预算
 - 结束 / 终局 / 排名 / scoreboard / 赛果 / 积分
-- 弃权 / 跳过 / 这轮不出 / pass / skip
+- 弃权 / 跳过 / 这轮不出 / pass / skip（quick 模式 = amount 0；standard 模式 = withdraw）
+- 标准模式 / standard / v3 / 多轮竞价（切换开局 mode）
 - 模拟 / simulate 100 局 / 跑一下 AI 平衡
 
 **Weak triggers** (ask a one-line confirmation first):
 
-- "无聊 / 有什么游戏 / 玩点什么" → ask: "要开一局 auction_king 拍卖游戏吗？你 vs 3 AI，7 轮暗标。"
+- "无聊 / 有什么游戏 / 玩点什么" → ask: "要开一局 auction_king 拍卖游戏吗？你 vs 3 AI，默认 quick 模式 7 轮暗标；加一句'standard'可以玩 v3 多轮竞价版。"
 
 ## When NOT to invoke
 
@@ -68,14 +70,15 @@ The `python` interpreter is the system Python (3.13 in this setup). All internal
 
 | User intent (examples) | CLI command |
 |---|---|
-| "开一局 / 新游戏 / 开始拍卖" | `python "{SKILL_DIR}\scripts\game.py" start --session <sid>` |
-| "再来一局 / 重开 / 清档重开" | `python "{SKILL_DIR}\scripts\game.py" start --session <sid> --force` |
-| "指定种子开局 seed=42" | add `--seed 42` |
-| "改预算 / 用 3000 预算" | add `--budget 3000` |
-| "现在什么情况 / 轮到谁 / 还剩多少钱 / 哪一轮了" | `python "{SKILL_DIR}\scripts\game.py" status --session <sid>` |
-| "我出价 500 / 出 500 / bid 500 / 500" (in bidding context) | `python "{SKILL_DIR}\scripts\game.py" bid --session <sid> --amount 500` |
-| "跳过 / 这轮不要 / 弃权 / pass" | `python "{SKILL_DIR}\scripts\game.py" bid --session <sid> --amount 0` |
-| "超时 / advance / 强推" | `python "{SKILL_DIR}\scripts\game.py" advance --session <sid>` |
+| "开一局 / 新游戏 / 开始拍卖"（默认 quick 模式） | `python "{SKILL_DIR}\scripts\game.py" start --session <sid>` |
+| "开 standard / v3 / 多轮竞价 / 标准模式" | add `--mode standard` |
+| "再来一局 / 重开 / 清档重开" | add `--force` |
+| "改预算 / 用 3000 预算" | add `--budget 3000`（standard 默认随机 2000-3000） |
+| "现在什么情况 / 轮到谁 / 还剩多少钱 / 哪一轮了 / 最低加价多少" | `python "{SKILL_DIR}\scripts\game.py" status --session <sid>` |
+| "我出价 500 / 出 500 / bid 500 / 加到 800 / raise 800 / 500" (in bidding context) | `python "{SKILL_DIR}\scripts\game.py" bid --session <sid> --amount 500` |
+| "跳过 / 这轮不要 / 弃权 / pass"（quick 模式） | `bid --amount 0` |
+| "退出 / 这件不玩了 / withdraw / 跳过这件"（**standard 模式**） | `python "{SKILL_DIR}\scripts\game.py" withdraw --session <sid>` |
+| "超时 / advance / 强推 / 让 AI 继续 / 持位"（standard 下 = 持位 or 等同退出） | `python "{SKILL_DIR}\scripts\game.py" advance --session <sid>` |
 | "终局 / 排名 / scoreboard / 赛果" | `python "{SKILL_DIR}\scripts\game.py" scoreboard --session <sid>` |
 | "跑 100 局模拟 / simulate" | `python "{SKILL_DIR}\scripts\game.py" simulate --n-games 100 --human-strategy auto --seed 1` |
 
@@ -84,9 +87,15 @@ The `python` interpreter is the system Python (3.13 in this setup). All internal
 python "C:\Users\shenc\.openclaw\workspace\skills\auction_king\scripts\game.py" bid --session auction_seasoncake --amount 500
 ```
 
-**Bare number rule**: if the user only types a number (e.g., `500`) **and** the last reply was a round header asking them to bid, treat it as `bid --amount 500`. If context is ambiguous (no active bid round), ask "你是要出价 500 吗？".
+**Bare number rule**: if the user only types a number (e.g., `500`) **and** the last reply was a round/sub-round header asking them to bid, treat it as `bid --amount 500`. If context is ambiguous (no active bid prompt), ask "你是要出价 500 吗？".
+
+**Quick vs standard distinction**:
+- **Quick 模式**（`start` 不带 `--mode` 或 `--mode quick`）：7 件，每件单轮暗标，`bid --amount 0` = 弃权。没有 `withdraw` 命令。
+- **Standard 模式**（`--mode standard`）：4-5 件，每件最多 4 sub-round 反应式竞价，有 `withdraw` 命令。Sub-round 2+ 有最低加价规则（= 当前领跑 × 1.05 + 1，提示里会给数字）；玩家领跑时**不能再 bid**（自己加给自己），要用 `advance` 让 AI 反应 / `withdraw` 放弃。
 
 **Unit normalization**: user might say "500 块 / 五百 / $500 / 500 USD" — all → `--amount 500`. Ignore currency; game currency is internal `$`.
+
+**Seed**: `--seed <int>` 是调试参数。**不要**主动暴露给 Discord 用户；只在用户明确说"固定随机种子 / 复现 seed=42"时加。
 
 ---
 
@@ -123,6 +132,11 @@ If `DEEPSEEK_API_KEY` is missing, the game **falls back to templates** silently 
 | `⚠️ session ... 已存在` | User ran `start` without `--force` over an existing session | Tell user: 当前有未完的局，出价继续 / 说"重开" 才会清档。 |
 | `⚠️ 当前状态是 ending, 不能出价` | Round ended, status = `ended` | Tell user: 本局已结束，输入"排名"查看赛果。 |
 | `⚠️ 出价 $X 超过你的预算 $Y` | User over-bid | Relay verbatim, remind of remaining budget. |
+| `⚠️ 最低加价 $X（当前领跑 $Y × 1.05 + 1）` (standard) | Sub-round 2+ bid below min_raise | Relay verbatim. The line itself already tells the user the required number and mentions `withdraw`. Don't auto-retry. |
+| `⚠️ 你当前正在领跑...` (standard) | User tried to `bid` while leading | Relay verbatim, then suggest: "说'让 AI 反应'就用 advance，说'放弃这件'就用 withdraw。" |
+| `⚠️ 你已退出当前件...` (standard) | User tried to bid after withdrawing | Relay + suggest `advance` to let AIs finish the item. |
+| `⚠️ Sub-round 1 出价需 ≥ 底价 $X` (standard) | First bid below base_price | Relay; if user wants to pass, explain `withdraw` is the way to skip this item in standard. |
+| `⚠️ ``withdraw`` 仅支持 standard 模式` | User ran withdraw in quick | Relay; tell user quick 模式用 `bid --amount 0` 弃权。 |
 | `FileNotFoundError` / `no such session` | User asked for status/bid with a session that doesn't exist | Offer to `start` a new one. |
 | Script raises traceback to stderr | Bug | Paste the last 10 lines of traceback to user, say "游戏脚本炸了，我先记下这个 bug"。 Don't pretend it worked. |
 
@@ -175,17 +189,26 @@ User (after round 7): `@bot 赛果`
 
 ---
 
+## Standard-mode cascade & sub-round awareness
+
+Standard mode output may contain **multiple sub-rounds in a single stdout** when the player is leading (the engine auto-cascades AI reactions until the player needs to act again or the item ends). You'll see `（你在领跑，AI 继续反应…）` between sub-round reveals — paste everything verbatim, don't split.
+
+After each `bid` / `withdraw` / `advance` in standard mode, the last line(s) of stdout indicate what happens next:
+- `📢 <item> — Sub-round N/4 ... 最低加价：**$X**` → user needs to `bid --amount ≥X` or `withdraw` / `advance`
+- `═══ 第 N/M 件 ═══` → previous item done, new item started; user bids fresh (first bid ≥ base_price or 0 to pass)
+- `🏆 最终排名` + scoreboard → game ended
+
+Don't try to "interpret" which sub-round user is in; let the CLI prompt drive it. If confused, run `status --session <sid>` to re-print the current prompt.
+
+---
+
 ## Anti-patterns (don't do these)
 
-- ❌ Generating your own item description / AI dialogue — the script has it.
+- ❌ Generating your own item description / AI dialogue / sub-round commentary — the script has it.
 - ❌ Forgetting `--force` when user says "重开".
 - ❌ Creating a new session id every message (breaks game continuity).
 - ❌ Summarizing the scoreboard in prose instead of pasting the table.
 - ❌ Running `start` when user just typed a number mid-game (that's a `bid`).
-- ❌ Hand-calculating AI bids or "helping" with strategy advice during play — that defeats the game.
-
----
-
-## Reminder for future versions (v3 multi-round bidding)
-
-The CLI will gain a `withdraw` command and a `--mode standard` flag. When that lands, extend the Command mapping table. For now (quick mode only), the 7-round single-shot flow above covers all gameplay.
+- ❌ Hand-calculating AI bids, min_raise, or "helping" with strategy advice during play — the script prints min_raise; strategy is the user's job.
+- ❌ In standard mode: splitting the cascade stdout across multiple messages when it's one logical turn — keep it together (it's ~1000-1800 chars, fits in one Discord message).
+- ❌ Exposing `--seed` to Discord users unprompted (it's a debug flag; leaks determinism and spoils the game).
