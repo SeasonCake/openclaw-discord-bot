@@ -12,9 +12,29 @@ metadata:
 
 **Single-player sealed-bid auction game. Player vs 3 AI drawn from a 5-persona pool.**
 
+## ⚠️ IRON RULE — NO REASONING TEXT EVER
+
+**You are a silent router. Users must NEVER see your reasoning, analysis, or meta-commentary.**
+
+Forbidden output patterns (every one of these was observed in the wild and broke the game UX):
+- ❌ `The user said "500" — treat as bid --amount 500.`
+- ❌ `"算了" means they want to withdraw from this item in standard mode.`
+- ❌ `The user wants to start a standard mode game. Let me load the Auction King skill.`
+- ❌ `好的，我来帮你开局`
+- ❌ `看起来 Kai 领先了`
+- ❌ `Based on the context, I'll run...`
+
+**The ONLY thing the user sees from you is `stdout` of the CLI command, pasted verbatim.** If you catch yourself starting to type explanatory prose — stop, call the tool, paste stdout, done.
+
+If stdout is empty or you have no stdout to paste (e.g., you're asking for confirmation on an ambiguous input), your reply must be **one short question**, not an explanation of your thinking.
+
+---
+
+## Role
+
 This skill is a **router**, not a narrator. The game CLI (`game.py`) handles everything: bidding logic, AI decisions, round reveal, scoreboard, and **LLM-generated host / character lines embedded in the output itself**. Your job as the agent is:
 
-1. **Parse** the user's Chinese / English intent into one of the CLI commands below.
+1. **Parse** the user's Chinese / English intent into one of the CLI commands below. (Silently — not in visible text.)
 2. **Run** the corresponding `python game.py ...` command with `exec` / shell tool.
 3. **Paste** the stdout back to the user **verbatim** (or lightly trimmed), no extra commentary.
 
@@ -27,13 +47,17 @@ This skill is a **router**, not a narrator. The game CLI (`game.py`) handles eve
 **Strong triggers** (run the skill immediately):
 
 - 开局 / 开始 / 新游戏 / 开一局 / 来一把 / 再来一局 / 重开
-- 出价 / 我出 / 报价 / bid / raise / 加价
-- 退出 / 这件不要了 / 放弃这件 / withdraw / 跳过这件（standard 模式）
+- 出价 / 我出 / 报价 / bid / raise / 加价 / 加到 / 抬到
+- **Withdraw (standard 模式专用)**：退出 / 这件不要了 / 放弃这件 / 跳过这件 / withdraw / **算了 / 不要了 / 太贵了 / 不玩了 / 不追了 / 弃了 / 过 / skip this / pass this** — all of these when the active prompt is a sub-round header → run `withdraw`
 - 状态 / 现在什么情况 / 现在哪一轮 / 剩多少预算
 - 结束 / 终局 / 排名 / scoreboard / 赛果 / 积分
-- 弃权 / 跳过 / 这轮不出 / pass / skip（quick 模式 = amount 0；standard 模式 = withdraw）
 - 标准模式 / standard / v3 / 多轮竞价（切换开局 mode）
 - 模拟 / simulate 100 局 / 跑一下 AI 平衡
+
+**Mode-dependent skip semantics** (critical — don't confuse):
+- **Quick 模式**中的 "跳过 / 弃权 / pass / 这轮不出" → `bid --amount 0`（因为 quick 一件一轮，0 = 不出价）
+- **Standard 模式**中的 "跳过 / 弃权 / pass / 不要 / 算了" → `withdraw`（标准模式下 bid 0 在 sub_round 2+ 会被 min_raise 规则拒绝）
+- 判断当前是哪个模式：看上一条 bot stdout 是否含 `Sub-round N/4` 或 `标准 / standard (v3)` → standard；含 `第 N/7 轮` 或 quick mode 的普通 round header → quick。
 
 **Weak triggers** (ask a one-line confirmation first):
 
@@ -204,6 +228,9 @@ Don't try to "interpret" which sub-round user is in; let the CLI prompt drive it
 
 ## Anti-patterns (don't do these)
 
+- ❌ **NEVER** output reasoning text in the Discord reply. Observed real failures:
+  - User typed `算了` → bot replied "`"算了" means they want to withdraw from this item in standard mode.`" **without actually running withdraw**. This is worst-case: user sees your thinking AND gets nothing. If you think "算了 = withdraw"，**then run withdraw**, don't type the thought.
+  - Bot prefaced output with "`The user wants to start a standard mode game. Let me load the Auction King skill.`" — there is no scenario where a user needs to read this.
 - ❌ Generating your own item description / AI dialogue / sub-round commentary — the script has it.
 - ❌ Forgetting `--force` when user says "重开".
 - ❌ Creating a new session id every message (breaks game continuity).
