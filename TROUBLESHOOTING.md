@@ -764,9 +764,91 @@ Sub-round 2 揭晓（晚清鼻烟壶）
 - **UX 问题和延迟问题常常同源**：LLM 多说话 → Discord 显示多出来的文字 + token 生成时间增加。砍掉前者自动修后者
 - **扩触发词是配套动作**：这次加了 `算了 / 不要了 / 太贵了 / 不玩了` 进 withdraw 映射。如果只加 IRON RULE 不加触发词，LLM 还是会在「没识别到这是 withdraw」时兜到推理兜底
 
+### 12.6 LLM 行为护栏要分三层：工具前 / 工具后 / 出错时（不是一刀切"少说话"）
+
+12.5 的 IRON RULE 上线后，第二天玩到第 3-4 件就发现**两个新的失败模式**：
+
+**失败模式 A：工具调用前的 preamble 没被 IRON RULE 覆盖**
+
+```
+@openclaw_bidking 现在什么情况
+openclaw_bidking APP:
+This is an Auction King game query. Let me read the skill file and check the current game state.
+The user is asking about the current game state. Let me check.
+找不到 session auction_qilindage。要开一局吗？
+```
+
+前两行是**调用工具之前**的"我要去干啥"。IRON RULE 主要贴的 ❌ 都是「处理中 / 解释参数」，漏了这种"我要开始处理了"的 pre-tool-call 自述。
+
+**失败模式 B：timeout 之后 bot 自作主张 `--force` 开新局**
+
+```
+@openclaw_bidking 下一件吧，太离谱了，竞拍价
+→ LLM idle timeout
+@openclaw_bidking 500
+→ 🏛️ 竞拍之夜开始！（新一局，完全不同的物品/对手）
+Hmm, the session file seems to have been lost. Let me check if there's a state file...
+```
+
+Bot 看到上一个 `bid` 似乎失败（实际只是 timeout），**自动决定**「那开个新局吧」并 `start --force`，覆盖掉玩家已经打到第 3 件的存档。IRON RULE 管的是"正常路径别推理"，**出错路径的兜底逻辑**完全没护栏。
+
+**修两条之后，第三个失败模式立刻冒出来**：
+
+**失败模式 C：模型开始 paraphrase CLI 输出**
+
+```
+# 实际 stdout（18 行完整结构）：
+Sub-round 2 揭晓（齐白石风格小品）
+  · Kai：$891 👑
+  · 你：$800（持位）
+  · 退出：Miles、阿鬼
+📣 当前领跑：Kai $891（次高 $800，领先 1.11×）
+📢 齐白石风格小品 — Sub-round 3/4
+   当前领跑：Kai $891
+   最低加价：$936（或 withdraw 退出）
+   你的预算：$2937
+
+# 模型实际发到 Discord（1 行俏皮话）：
+Kai 反超了！要加价到 $936+，还是放弃？
+```
+
+再严重点的还自己加 `😂` 和 "明智！" 点评。**IRON RULE + ZERO-PREAMBLE 把"少说话"训练得太凶，模型把原则泛化到"CLI 输出我也精简一下吧"**——classic LLM alignment over-generalization。
+
+**根因**：我之前把"不要泄漏 / 少说话"当成一条规则写。实际上**三种情境的"正确形状"完全不同**：
+
+| 情境 | 该做什么 | 该是什么形状 |
+|---|---|---|
+| **工具调用前** | 闭嘴直接 call | **零字符** |
+| **工具调用后** | 复制粘贴 stdout | **完整 N 行**（N = stdout 行数）|
+| **工具出错时** | 一句症状 + 短问 | **一行** |
+
+把这三条**分开命名**写进 SKILL.md：**ZERO-PREAMBLE RULE** / **VERBATIM PASTE RULE** / **ERROR RECOVERY RULE**。每条贴**对应情境**的真实 ❌ 反例（pre-tool-call 的自述、paraphrase 成一句话的战报、auto-restart 的兜底诊断）。
+
+部署后立刻跑一局 standard 5/5 件，全程零超时、零 paraphrase、完整结构：
+
+```
+🏆 最终排名
+  🥇 阿鬼   $3034  (+$70)
+  🥈 Miles  $2964  (+$0)
+  🥉 艺姐   $2964  (+$0)
+  4️⃣ 你    $2514  ($-450)
+```
+
+（玩家真实输掉、AI 两次"捡漏"成功——本来设计的"阿鬼 = 专设陷阱"人设第一次在数据层兑现。）
+
+**教训**：
+
+- **LLM 护栏不能合并命名**：如果叫"IRON RULE"一条兜底所有情境，模型会把它往最省力的方向 collapse——大概率是"啥都少说"，然后 paraphrase 掉你最想保留的部分（CLI 结构）。拆成 3 条独立命名、给每条配独立 ❌ 反例，模型才能区分"这种情境下的正确长度"
+- **LLM alignment over-generalization 是真的**：训练模型"在 A 少说话"→ 它学会"在 B C D 也少说话"。**反制靠"明确说明 B 情境要长"**，不能只靠"A 要短"
+- **Error path ≠ happy path**：正常调用、异常调用、工具失败是**三个完全不同的 phase**，各自要单独 audit。之前只审 happy path 的护栏，error path 一炸（比如 `--force` 覆盖存档）损失可能比 happy path 丑一点严重得多
+- **新护栏上线必跑 end-to-end**：一局 standard 5/5 件 ≈ 10 分钟 Discord，是最好的 acceptance test。单元测试永远抓不到"模型 paraphrase 成俏皮话"这种行为——只有真人玩 + 真人看才能 flag
+- **存档 dedupe 也是护栏的一部分**：顺带加了 DUPLICATE MESSAGE DEDUPE（用户手抖连发两个 `700`，跑一次就行，别跑两次）。这种"手机 Discord 常见现象"在写代码时绝对想不到，必须靠真实使用暴露
+
+**最终状态**：SKILL.md 顶部现在是 4 条命名护栏（IRON / ZERO-PREAMBLE / VERBATIM PASTE / ERROR RECOVERY），加一条 DUPLICATE DEDUPE。每条都有贴在 Discord 上实拍到的 ❌ 反例。
+
 ---
 
-## 总结：如果再来一次，最重要的 10 条
+## 总结：如果再来一次，最重要的 11 条
 
 1. **装 OpenClaw 前**：确认 `node --version` ≥ 22.14 **且** `where.exe node` 第一条就是系统 Node，不是 Anaconda
 2. **API key**：用 `[Environment]::SetEnvironmentVariable(... .Trim(), "User")`，**长度验证**，**永不贴聊天**
@@ -778,7 +860,8 @@ Sub-round 2 揭晓（晚清鼻烟壶）
 8. **大重构 = Add, Don't Subtract**：新增 `BidContextV3` / `decide_bid_v3` / `standard_engine.py`，v2 路径零改动；cmd 层按 mode 分流；回归测试随新增一起写
 9. **State machine 写 history 要存完整 pool（不是只存增量）**；真实 playthrough 能挖出单元测试漏掉的 state 遗漏 bug；simulate/batch 前显式设 `USE_LLM=0`
 10. **SKILL.md 反 LLM 泄漏**：抽象规则（"no commentary"）无效；把真实观察到的 bad output 原文贴进去作 ❌ 反例效果最强；UX 和延迟常常同源，砍掉冗余推理同时修两件事
+11. **LLM 行为护栏分三层，不能合并**：工具前要"零字符"、工具后要"完整粘贴"、出错时要"一句问"。命名成三条独立规则（ZERO-PREAMBLE / VERBATIM PASTE / ERROR RECOVERY）各自配 ❌ 反例，不要用一条大规则兜底——LLM 会把它 collapse 成"啥都少说"顺带 paraphrase 掉你最想保留的 CLI 结构。Error path ≠ happy path，各自 audit。真人玩一局 5/5 件 > 跑 100 个单元测试。
 
 ---
 
-*最后更新：2026-04-18 晚 —— `auction_king` v3 C 阶段（standard 模式多轮竞价）+ Discord 首测反 thinking-leak 修复后补充第 12 节（含 12.5）。*
+*最后更新：2026-04-22 晚 —— `auction_king` v3 C 阶段（standard 模式多轮竞价）+ Discord 连续 3 晚迭代反 LLM 泄漏 / auto-restart / paraphrase，补充第 12 节（含 12.5、12.6）并把 scoreboard 截图归档到 `skills/auction_king/assets/screenshots/`。*
