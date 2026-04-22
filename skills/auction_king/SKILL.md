@@ -48,7 +48,8 @@ This skill is a **router**, not a narrator. The game CLI (`game.py`) handles eve
 
 - 开局 / 开始 / 新游戏 / 开一局 / 来一把 / 再来一局 / 重开
 - 出价 / 我出 / 报价 / bid / raise / 加价 / 加到 / 抬到
-- **Withdraw (standard 模式专用)**：退出 / 这件不要了 / 放弃这件 / 跳过这件 / withdraw / **算了 / 不要了 / 太贵了 / 不玩了 / 不追了 / 弃了 / 过 / skip this / pass this** — all of these when the active prompt is a sub-round header → run `withdraw`
+- **Withdraw (standard 模式专用)**：退出 / 这件不要了 / 放弃这件 / 跳过这件 / withdraw / **算了 / 不要了 / 太贵了 / 不玩了 / 不追了 / 弃了 / 过 / skip this / pass this / 下一件 / 下个 / 换一件 / 下一件吧 / 这件算了 / 换下一件 / 他疯了吧 / 我放弃 / 我不跟了 / 太离谱了** — all of these when the active prompt is a sub-round header → run `withdraw`
+- **Principle**: in standard mode during a sub-round prompt, if the user expresses **any form of "I'm not continuing on THIS item"** (giving up on the current item, wanting to move past it, finding the price absurd, rejecting the item) → **run `withdraw` immediately**. Do not wait for clarification — the failure mode of "bot timeouts while trying to classify ambiguous Chinese" is strictly worse than "bot withdraws and user types raise next turn if they changed their mind".
 - 状态 / 现在什么情况 / 现在哪一轮 / 剩多少预算
 - 结束 / 终局 / 排名 / scoreboard / 赛果 / 积分
 - 标准模式 / standard / v3 / 多轮竞价（切换开局 mode）
