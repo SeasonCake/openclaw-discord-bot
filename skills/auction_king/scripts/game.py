@@ -214,6 +214,7 @@ def cmd_start(args: argparse.Namespace) -> str:
         seed=args.seed,
         initial_budget=args.budget,
         max_rounds=args.rounds,
+        mode=args.mode,
     )
     save_state(args.session, state)
 
@@ -429,8 +430,24 @@ def main() -> int:
     p_start = sub.add_parser("start", help="开一局新游戏")
     p_start.add_argument("--session", required=True)
     p_start.add_argument("--seed", type=int, default=None)
-    p_start.add_argument("--budget", type=int, default=2000)
-    p_start.add_argument("--rounds", type=int, default=7)
+    p_start.add_argument(
+        "--mode",
+        choices=["quick", "standard"],
+        default="quick",
+        help="quick=v2 单轮暗标（默认），standard=v3 多轮竞价",
+    )
+    p_start.add_argument(
+        "--budget",
+        type=int,
+        default=None,
+        help="初始预算；留空时 quick=2000，standard=随机 2000-3000",
+    )
+    p_start.add_argument(
+        "--rounds",
+        type=int,
+        default=None,
+        help="件数；留空时 quick=7，standard=随机 4 或 5",
+    )
     p_start.add_argument("--force", action="store_true", help="覆盖已存在 session")
 
     p_status = sub.add_parser("status", help="查看当前轮状态")
