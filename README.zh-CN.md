@@ -14,11 +14,9 @@
 
 ## Demo 演示
 
-<video src="https://github.com/SeasonCake/openclaw-discord-bot/raw/main/assets/videos/demo.mp4" controls width="100%" muted>
-  你的浏览器不支持内嵌视频。可以跳转到 <a href="https://youtu.be/4KZbtfR2rOY">YouTube</a> 观看。
-</video>
+https://github.com/user-attachments/assets/d48fbde1-1160-4886-adc0-20be6bf00876
 
-**▶ YouTube 链接：** [https://youtu.be/4KZbtfR2rOY](https://youtu.be/4KZbtfR2rOY)（unlisted）
+**▶ YouTube 链接：** [https://youtu.be/4KZbtfR2rOY](https://youtu.be/4KZbtfR2rOY)（unlisted）· **▶ 仓库内备份：** [`assets/videos/demo.mp4`](./assets/videos/demo.mp4)
 
 ### 截图
 
@@ -32,15 +30,9 @@
 </tr>
 </table>
 
-### 核心设计：一个 bot、两个技能、零模式切换
-
-下面这张是**完整未剪辑**的聊天流——同一个用户（`Qilindage`）对同一个 bot（`@openclaw_bidking`）说话。用户从头到尾没选过模式、没说过"切换到某某技能"。只是拖进来一个 CSV 说"帮我分析一下"，过几分钟又说"开一局游戏"。OpenClaw 框架读意图、自动路由到对应技能。
-
-<p align="center">
-  <img src="./assets/screenshots/04-full-chat-flow.png" alt="Discord 全流程长图：一个 @ 走两条技能路径" width="560" />
-</p>
-
-`csv_analyzer` 在其他数据集上的 EDA 图表样本：[`eda-sample-1`](./assets/screenshots/eda-sample-1.webp) · [`eda-sample-2`](./assets/screenshots/eda-sample-2.webp)
+> 🖼️ **完整未剪辑长图**（整局聊天流）→ [`04-full-chat-flow.png`](./assets/screenshots/04-full-chat-flow.png) —— 展示同一个 `@` 入口走两条技能路径，框架根据自然语言意图自动路由，用户没做任何"模式切换"操作。
+>
+> 📊 **其他数据集上的 EDA 样本图**（`csv_analyzer` 产出）→ [`eda-sample-1`](./assets/screenshots/eda-sample-1.webp) · [`eda-sample-2`](./assets/screenshots/eda-sample-2.webp)
 
 ---
 
