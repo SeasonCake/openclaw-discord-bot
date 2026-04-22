@@ -73,8 +73,9 @@
   - [x] **3.4** LLM 台词层：DeepSeek 主持人开场 / AI 角色反应 / 主持人终局总结 + 模板 fallback + 24 单元测试 ✅
   - [x] **Kai 话痨机制**：Kai 领先/反超时必出声，让 FOMO 人设更鲜明 ✅
   - [x] **v3 设计冻结**：[GAME_DESIGN_v3.md](./skills/auction_king/GAME_DESIGN_v3.md) —— 多轮竞价 + 碾压阈值（1.8 / 1.5 / 1.2）+ AI 反应式策略 🆕
-  - [x] **3.6a** Discord 集成 SKILL.md：[SKILL.md](./skills/auction_king/SKILL.md) 写完，LLM 路由 + stdout 透传模式 🆕
-  - [ ] **3.6b** 部署到 OpenClaw workspace + Discord 端到端跑通 + 录 demo
+  - [x] **3.6a** Discord 集成 SKILL.md：[SKILL.md](./skills/auction_king/SKILL.md) 写完，LLM 路由 + stdout 透传模式
+  - [x] **3.6b** Discord 端到端跑通 ✅ —— 7 轮 LLM 台词全打通，3 AI 各自开口，阿鬼 +$147 最佳 ROI，主持人终局毒舌："韭菜割出艺术感"
+  - [x] **3.6c** 部署工具化：[`tools/deploy-skill.ps1`](./tools/deploy-skill.ps1) 一键同步到 workspace（解决 junction 被 OpenClaw 拒绝的安全机制坑）
   - [ ] **v3 实现**：state + AI `decide_sub_round_action` + `cmd_withdraw` + narration 扩展（~8 h）
   - [ ] **3.5** 图片资产
   - [ ] **3.7** 实战 demo 录屏
@@ -107,11 +108,13 @@
 ```
 openclaw-wechat-bot/
 ├── README.md                ← 你在看（项目入口）
-├── TROUBLESHOOTING.md       ← 踩坑 & 教训（复刻项目必读）
+├── TROUBLESHOOTING.md       ← 踩坑 & 教训（复刻项目必读，含 junction/env 两大 skill 部署坑）
 ├── SETUP.md                 ← 阶段 1 理想路径
 ├── PIVOT_TODO.md            ← 转行简历改版 checklist
 ├── requirements.txt         ← Python 依赖（给 skill 用）
 ├── .gitignore
+├── tools/
+│   └── deploy-skill.ps1     ← 一键部署 skill 到 ~/.openclaw/workspace/skills/
 └── skills/
     ├── csv_analyzer/        ← 阶段 2 完成
     │   ├── SKILL.md         ← OpenClaw skill 定义（v2 强触发词）
@@ -136,8 +139,13 @@ openclaw-wechat-bot/
 openclaw gateway
 # 保持这个窗口开着
 
-# 3. 去 Discord Qilindage 服务器 @openclaw_bidking 开聊
-#    - 拖附件，别粘贴 CSV 文本（会爆 context）
+# 3. 改了 skill 源码之后一键重新部署到 workspace（不改就不用跑）
+.\tools\deploy-skill.ps1 auction_king
+#    → 然后 gateway 窗口 Ctrl+C + 重新 openclaw gateway 才能加载新版本
+
+# 4. 去 Discord Qilindage 服务器 @openclaw_bidking 开聊
+#    - 拖附件（CSV/Excel），别粘贴文本内容（会爆 context）
+#    - @bot 开一局 auction_king ←跑暗标游戏
 #    - 新任务用新频道（或 /new 开新 session）
 ```
 

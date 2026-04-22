@@ -16,6 +16,7 @@
 8. [Discord 使用 Gotchas](#8-discord-使用-gotchas)
 9. [Windows 11 专属坑](#9-windows-11-专属坑)
 10. [调试速查表](#10-调试速查表)
+11. [Skill 部署：junction 被拒 + 环境变量继承](#11-skill-部署junction-被拒--环境变量继承)
 
 ---
 
@@ -501,14 +502,116 @@ session 会自动用 `+10000000000` 这个假号码开一个，不会污染 Disc
 
 ---
 
-## 总结：如果再来一次，最重要的 5 条
+## 11. Skill 部署：junction 被拒 + 环境变量继承
+
+第二阶段（`auction_king` skill）开发时，为了保持"**git 仓库是唯一真相，workspace 只是部署目标**"的干净结构，第一反应是用 Windows 目录 junction（`mklink /J`）把 workspace 下的 skill 目录指向 git 仓库里的源码。结果撞上两个非常隐蔽的坑。
+
+### 11.1 OpenClaw 拒绝 junction/symlink 跳出 workspace 根（安全特性）
+
+**现象**：
+
+```powershell
+cmd /c mklink /J "C:\Users\shenc\.openclaw\workspace\skills\auction_king" `
+                 "c:\xiangmuyunxing\biancheng\2026\projects\openclaw-wechat-bot\skills\auction_king"
+# Junction created ...（看起来很成功）
+
+openclaw skills list --verbose
+# [skills] Skipping escaped skill path outside its configured root:
+#   source=openclaw-workspace
+#   root=~/.openclaw\workspace\skills
+#   reason=symlink-escape
+#   requested=~/.openclaw\workspace\skills\auction_king
+#   resolved=c:\xiangmuyunxing\biancheng\2026\projects\...\skills\auction_king
+#
+# 结果：auction_king 在列表里完全不出现，更别说 ready。
+```
+
+**根因**：OpenClaw 在扫描 `workspace/skills` 时会 `realpath` 解析每个条目的真实路径，**如果解析后的路径跳出配置的 root，就直接跳过**。这是一个**故意的安全设计**（防止恶意 skill 通过 symlink 引入 workspace 外的代码），并不是 bug。junction 在 Windows 上和 POSIX symlink 表现一致，同样被拒。
+
+**解法**：放弃 junction，用真实复制。推荐 `robocopy` 做快速增量同步，并且把开发用不到的目录排除掉：
+
+```powershell
+# 删掉之前的 junction（只删链接本身，不影响源文件）
+Remove-Item "C:\Users\shenc\.openclaw\workspace\skills\auction_king" -Force
+
+robocopy `
+    "C:\xiangmuyunxing\biancheng\2026\projects\openclaw-wechat-bot\skills\auction_king" `
+    "C:\Users\shenc\.openclaw\workspace\skills\auction_king" `
+    /E /XD state __pycache__ .pytest_cache tests /NFL /NDL /NJH /NJS
+```
+
+**副作用**：每次改源码（SKILL.md / Python / 数据）都要重新 robocopy 一次才能让 gateway 看到。为此我在 `tools/deploy-skill.ps1` 写了一键同步脚本：
+
+```powershell
+.\tools\deploy-skill.ps1 auction_king
+# 脚本内部就是上面那条 robocopy，加了自动清理旧 target + 打印统计
+```
+
+**教训**：任何类 Unix 工具链在 Windows 移植时，"symlink 能工作"和"symlink 被允许"是两回事。企业级安全约束往往默认拒绝 symlink 跨 root，看日志比看"看起来执行成功"更重要。
+
+### 11.2 Gateway 子进程继承不到临时 `$env:` 变量
+
+**现象**：
+
+`auction_king` 的 `llm_narrator.py` 依赖两个环境变量：
+
+- `DEEPSEEK_API_KEY` — 已经用 `[Environment]::SetEnvironmentVariable(..., "User")` 持久化过了
+- `AUCTION_KING_USE_LLM=1` — 只在 dev PowerShell 里临时 `$env:AUCTION_KING_USE_LLM = "1"` 过
+
+**结果**：Discord 触发 skill 时跑的 `python game.py start`，`os.environ.get("AUCTION_KING_USE_LLM")` 返回 None → fallback 到模板。LLM 台词层**静默失效**，但脚本正常跑完，没有任何错误提示。
+
+**根因**：Gateway（`openclaw gateway`）早就常驻进程了，它的环境变量快照是**启动那一刻**的。之后任何 `$env:` 临时设置都只属于那个 PowerShell 窗口，**不会反向注入已在运行的 gateway 进程**。gateway 再 spawn 的 Python 子进程继承的是 gateway 自己的快照。
+
+**解法**：
+
+```powershell
+# 错误姿势（只在当前窗口生效，gateway 看不到）
+$env:AUCTION_KING_USE_LLM = "1"
+
+# 正确姿势（永久写入用户 env，未来所有新进程都继承）
+[System.Environment]::SetEnvironmentVariable("AUCTION_KING_USE_LLM", "1", "User")
+
+# 设完必须重启 gateway 才能拿到新变量
+# （Ctrl+C 旧的 → 重开 `openclaw gateway`）
+```
+
+**验证姿势**：
+
+```powershell
+# 从 User scope 直接读（不通过 $env: 这一层）
+[System.Environment]::GetEnvironmentVariable("AUCTION_KING_USE_LLM", "User")
+# 应返回 "1"
+```
+
+**教训**：任何需要让**子进程看到**的 env var，必须用 `SetEnvironmentVariable(..., "User")`（或 "Machine"，视权限而定），然后**重启**依赖它的常驻进程。`$env:` 只适合脚本内部临时覆盖，完全不适合配置 skill / plugin 运行时。
+
+### 11.3 连带发现：LLM 台词层失效是静默的
+
+上面这条 "env 没继承 → LLM fallback 到模板" 的失效**没有任何警告提示**。这是我在 `llm_narrator.py` 里的刻意设计（为了让 key 缺失时不要把整个游戏 crash 掉），但副作用是**不容易发现**。
+
+修法：在 gateway 启动日志或者 game.py 初次跑时，如果 LLM disabled，打印一行明显的告警：
+
+```python
+# 在 llm_narrator.is_enabled() 里
+if not _enabled and not _warned:
+    print("[llm_narrator] AUCTION_KING_USE_LLM != '1' → running in template fallback mode.",
+          file=sys.stderr)
+    _warned = True
+```
+
+已列入 3.4.1 小修单。
+
+---
+
+## 总结：如果再来一次，最重要的 6 条
 
 1. **装 OpenClaw 前**：确认 `node --version` ≥ 22.14 **且** `where.exe node` 第一条就是系统 Node，不是 Anaconda
 2. **API key**：用 `[Environment]::SetEnvironmentVariable(... .Trim(), "User")`，**长度验证**，**永不贴聊天**
 3. **OpenClaw 配置**：跳过 `onboard` / `setup`，直接手写 `openclaw.json`，`config validate` 通过再说
 4. **Discord**：**Message Content Intent 打开** + `groupPolicy=open` + `plugins.allow` 加进去；VPN 切模式**必重启 gateway**
 5. **Skill**：写在 `~/.openclaw/workspace/skills/`，SKILL.md description 要**强触发词**，用 `openclaw skills list` 验证 ready
+6. **Skill 部署**：**不要用 junction/symlink**（会被 OpenClaw 安全机制拒绝）；用 robocopy 真实复制 + 一键脚本 `tools/deploy-skill.ps1`；**env var 只认 `SetEnvironmentVariable(..., "User")` + 重启 gateway**
 
 ---
 
-*最后更新：2026-04-22 —— 从昨夜 00:20 到今天中午 12:00，12 小时实战总结。*
+*最后更新：2026-04-18 —— `auction_king` 3.6b Discord 端到端跑通当晚补充第 11 节。*
