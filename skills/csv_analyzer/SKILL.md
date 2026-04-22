@@ -26,6 +26,7 @@ Forbidden output patterns (every one of these was observed in the wild and broke
 - ❌ `现在库已经安装好了，让我重新运行图表生成脚本：`
 - ❌ `很好！图表已经生成。现在让我发送这个图表给你。由于字体问题，图表中的中文可能显示为乱码...`
 - ❌ `由于系统字体问题，图表中的中文标签可能显示为方框或乱码，但图表的数据可视化部分应该清晰可见。`
+- ❌ 在 reply 文本里再次提到生成的 PNG 绝对路径（例如 `附件路径 C:\...\xxx_eda.png 已保存` 或 `图片已发送，见下方 xxx_eda.png`）——Discord channel 已经从 **plot.py 的 stdout** 抓到路径并自动上传；你在 reply 里再提一次会**触发第二次上传，导致图被发两次**
 
 ### ZERO-PREAMBLE RULE
 
@@ -126,18 +127,23 @@ Do **NOT** paste the raw tables back into Discord (no table rendering). Summariz
 
 ### Chart request ("画图" / "可视化" / "生成 EDA 图表")
 
-Run `plot.py`, read stdout, **then**:
+**Run `plot.py` EXACTLY ONCE** (it's deterministic — running twice produces an identical PNG and causes Discord to attach the image **twice**). Then write a short reply:
 
-1. **One-sentence confirmation** using the stdout info (panel count, one-hot groups, etc.)
-2. **Attach the PNG** (Discord channel sends the file at the output path)
-3. **One follow-up**: what's worth zooming in on?
+1. **One-sentence description** of what the chart shows (use stdout info: panel count, one-hot groups detected, key columns)
+2. **One follow-up question**: what's worth zooming in on?
 
-Example:
+**Reply must NOT contain the absolute PNG path.** Discord channel already auto-attaches files printed by the script. Mentioning the path in your reply triggers a second attachment upload = image sent twice.
+
+Example (✅ correct shape):
+
 > 已生成 10 面板 EDA 图（90 行 × 77 列，识别出 4 组 one-hot 编码：Orbit / LaunchSite / LandingPad / Serial）。载荷质量分布呈双峰（轻载 <2000kg 和重载 >10000kg），Block 与 FlightNumber 相关性 0.93。
 >
 > 要看哪一块的细节？比如 payload 随时间趋势，或者不同 orbit 的载荷分布？
 
-Do **NOT** add commentary like "图中中文可能显示为方框" — `plot.py` handles CJK fonts correctly, don't seed FUD.
+Anti-patterns:
+- ❌ Running `plot.py` twice "to be safe" — deterministic, same output, duplicates the attachment
+- ❌ Adding `附件：C:\...\xxx_eda.png` or `图表已保存到 ...` at the end of your reply
+- ❌ Adding FUD like "图中中文可能显示为方框" — `plot.py` handles CJK correctly, don't pre-apologize
 
 ---
 
