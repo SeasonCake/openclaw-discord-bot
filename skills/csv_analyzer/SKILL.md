@@ -26,7 +26,7 @@ Forbidden output patterns (every one of these was observed in the wild and broke
 - ❌ `现在库已经安装好了，让我重新运行图表生成脚本：`
 - ❌ `很好！图表已经生成。现在让我发送这个图表给你。由于字体问题，图表中的中文可能显示为乱码...`
 - ❌ `由于系统字体问题，图表中的中文标签可能显示为方框或乱码，但图表的数据可视化部分应该清晰可见。`
-- ❌ 在 reply 文本里再次提到生成的 PNG 绝对路径（例如 `附件路径 C:\...\xxx_eda.png 已保存` 或 `图片已发送，见下方 xxx_eda.png`）——Discord channel 已经从 **plot.py 的 stdout** 抓到路径并自动上传；你在 reply 里再提一次会**触发第二次上传，导致图被发两次**
+- ❌ 在 reply 的正文段落里把 PNG 路径**当成叙述内容**再写一次（例如 `图表已保存到 C:\...\xxx_eda.png` 或 `附件路径 C:\...\xxx_eda.png` 写在句子中间当说明文本用）——附件的**唯一合法触发机制**是在 reply 里单独起一行写 `MEDIA:<绝对路径>`（见下文 "Chart request" 章节）。把路径当叙述文本写到正文里**不会**触发第二次上传（那只是文字），但会让用户看到难看的绝对路径；把 `MEDIA:` 写两次或把同一路径既放 `MEDIA:` 又放正文里被 channel 当路径扫到，才会触发二次上传
 
 ### ZERO-PREAMBLE RULE
 
@@ -93,7 +93,7 @@ Prints markdown to stdout: shape, column table, numeric summary, categorical top
 python "{SKILL_DIR}/scripts/plot.py" "<file_path>" --output "<output_png_path>" [--top N]
 ```
 
-Generates `<output_png_path>` with a grid of panels: missing-value overview, numeric distributions (with mean/median markers), one-hot group bars (auto-detected), categorical top-N bars, correlation heatmap. **~2 seconds.** Prints a one-line summary to stdout plus the output path.
+Generates `<output_png_path>` with a grid of panels: missing-value overview, numeric distributions (with mean/median markers), one-hot group bars (auto-detected), categorical top-N bars, correlation heatmap. **~2 seconds.** Prints **only a semantic summary** to stdout (panel count, one-hot groups, key numeric cols) — it deliberately does **not** echo the output path to prevent double-attachment. You already know the path from the `--output` arg you passed.
 
 ### On Windows
 
@@ -104,7 +104,26 @@ python "C:\Users\shenc\.openclaw\workspace\skills\csv_analyzer\scripts\analyze.p
 python "C:\Users\shenc\.openclaw\workspace\skills\csv_analyzer\scripts\plot.py" "C:\Users\shenc\.openclaw\media\inbound\xxx.csv" --output "C:\Users\shenc\.openclaw\media\inbound\xxx_eda.png"
 ```
 
-Use the same directory (`inbound`) for output so the Discord channel can attach the image back.
+Use the same directory (`inbound`) for output so the Discord channel can resolve the path when attaching.
+
+### ATTACHMENT MECHANISM (important — misread this and you'll send the image twice)
+
+OpenClaw's Discord channel attaches a file to the reply **only when it sees a line in the reply of the form**:
+
+```
+MEDIA:<absolute path to the file>
+```
+
+(on its own line, no surrounding text, uppercase `MEDIA:` prefix).
+
+It does **NOT** scan tool stdout for paths. It does **NOT** auto-attach every file under `inbound/`. It **only** picks up the `MEDIA:` directive from **your reply**.
+
+Implications:
+
+1. **You must emit exactly one `MEDIA:<path>` line** in the chart reply, using the `--output` path you passed to `plot.py`
+2. **Do not emit `MEDIA:<path>` more than once** (not even pointing to the same file — each `MEDIA:` = one upload)
+3. Regular text mentions of the path (e.g. `图表保存在 C:\...\xxx.png` as sentence content) are **not** attach triggers — they're just ugly text. Still avoid them for UX, but they're not the bug
+4. `plot.py` deliberately does **not** print the output path to stdout (so there's no risk of the channel misinterpreting stdout as a MEDIA directive if behavior ever changes)
 
 ---
 
@@ -127,23 +146,42 @@ Do **NOT** paste the raw tables back into Discord (no table rendering). Summariz
 
 ### Chart request ("画图" / "可视化" / "生成 EDA 图表")
 
-**Run `plot.py` EXACTLY ONCE** (it's deterministic — running twice produces an identical PNG and causes Discord to attach the image **twice**). Then write a short reply:
+**Run `plot.py` EXACTLY ONCE.** It's deterministic — never run it again "to be safe". Then write a reply with this exact structure:
 
-1. **One-sentence description** of what the chart shows (use stdout info: panel count, one-hot groups detected, key columns)
-2. **One follow-up question**: what's worth zooming in on?
+```
+<1-2 sentence data summary>
 
-**Reply must NOT contain the absolute PNG path.** Discord channel already auto-attaches files printed by the script. Mentioning the path in your reply triggers a second attachment upload = image sent twice.
+<2-4 bullet "key findings" lines, if user also wanted text analysis>
+
+MEDIA:<absolute path to the generated PNG, same as --output arg>
+
+<1 follow-up question>
+```
+
+Rules for the `MEDIA:` line:
+
+- **Exactly one** `MEDIA:` line per reply. Not zero (image won't attach), not two (image attaches twice)
+- Must start at column 0 of a new line (no leading spaces, no list bullet, no quote marker)
+- Path must be the same absolute path you passed to `--output`
+- Do **not** wrap it in backticks, quotes, or code fences
 
 Example (✅ correct shape):
 
-> 已生成 10 面板 EDA 图（90 行 × 77 列，识别出 4 组 one-hot 编码：Orbit / LaunchSite / LandingPad / Serial）。载荷质量分布呈双峰（轻载 <2000kg 和重载 >10000kg），Block 与 FlightNumber 相关性 0.93。
->
-> 要看哪一块的细节？比如 payload 随时间趋势，或者不同 orbit 的载荷分布？
+```
+已生成 10 面板 EDA 图（90 行 × 77 列，识别出 4 组 one-hot 编码：Orbit / LaunchSite / LandingPad / Serial）。载荷质量分布呈双峰（轻载 <2000kg 和重载 >10000kg），Block 与 FlightNumber 相关性 0.93。
 
-Anti-patterns:
-- ❌ Running `plot.py` twice "to be safe" — deterministic, same output, duplicates the attachment
-- ❌ Adding `附件：C:\...\xxx_eda.png` or `图表已保存到 ...` at the end of your reply
+MEDIA:C:\Users\shenc\.openclaw\media\inbound\b4c90b0e-..._eda.png
+
+要看哪一块的细节？比如 payload 随时间趋势，或者不同 orbit 的载荷分布？
+```
+
+Anti-patterns (each one observed + broke UX):
+
+- ❌ Running `plot.py` twice "to be safe" — deterministic, wastes tokens, no benefit
+- ❌ Writing the path twice (once as `MEDIA:<path>` and once again as sentence content like `图表保存在 C:\...\xxx_eda.png`) — the second mention doesn't trigger upload but looks ugly. Just use `MEDIA:` once.
+- ❌ Emitting the `MEDIA:` line twice pointing to the same file — **this does trigger double upload** (each `MEDIA:` line is one attach)
 - ❌ Adding FUD like "图中中文可能显示为方框" — `plot.py` handles CJK correctly, don't pre-apologize
+- ❌ Mentioning `pip install` or font issues — skill handles everything
 
 ---
 
@@ -184,4 +222,4 @@ User drags `sales.csv` into Discord with `@bot 帮我看看并画图`.
    >
    > EDA 图表已生成（8 面板），附件见下。要不要我按 category 拆一下销售额和利润率？
 
-4. Attach `sales_eda.png` (Discord channel auto-attaches files whose path is mentioned in reply).
+4. The `MEDIA:C:\...\sales_eda.png` line in your reply is what triggers Discord to attach the PNG. Exactly one such line. The rest of the reply is plain chat text.

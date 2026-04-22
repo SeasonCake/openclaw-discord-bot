@@ -256,7 +256,7 @@ def main() -> None:
     df = load_table(args.file)
     info = build_plots(df, output, args.top)
 
-    print(f"EDA 图表已生成：{output}")
+    print(f"EDA 图表生成完毕")
     print(f"  - 数据规模：{df.shape[0]:,} 行 × {df.shape[1]} 列")
     print(f"  - 面板数：{info['panel_count']}")
     if info["onehot_groups"]:
