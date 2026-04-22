@@ -17,6 +17,7 @@
 9. [Windows 11 专属坑](#9-windows-11-专属坑)
 10. [调试速查表](#10-调试速查表)
 11. [Skill 部署：junction 被拒 + 环境变量继承](#11-skill-部署junction-被拒--环境变量继承)
+12. [v3 重构期：PowerShell heredoc、additive API、state machine 坑](#12-v3-重构期powershell-heredocadditive-apistate-machine-坑)
 
 ---
 
@@ -603,7 +604,111 @@ if not _enabled and not _warned:
 
 ---
 
-## 总结：如果再来一次，最重要的 6 条
+## 12. v3 重构期：PowerShell heredoc、additive API、state machine 坑
+
+> 场景：`auction_king` 3.6b 跑通后继续迭代 v3（standard 模式多轮竞价）。从 Phase B1（mode-aware state）→ B2（reactive AI）→ C（sub-round 引擎 + CLI dispatch）中，又踩到几个值得写下来的坑。
+
+### 12.1 PowerShell 多行 commit message：**别用 bash heredoc**
+
+我写过一次：
+
+```powershell
+# ❌ bash 风格，PowerShell 直接 ParserError
+git commit -m @`"line1
+line2
+line3`"@
+```
+
+PowerShell **没有** `@"` 这种转义写法（那个反引号让它彻底看不懂了）。正确写法是 PowerShell 原生 **here-string**：
+
+```powershell
+# ✅ PowerShell here-string：开引号 @" 必须单独一行，收尾 "@ 也必须顶格
+$msg = @"
+第一行标题
+
+第二行正文，想写多少行都行
+也可以包含 "英文引号" 和 `反引号`
+"@
+git commit -m $msg
+```
+
+要点：
+- `@"` 后面**直接换行**，内容从下一行开始
+- `"@` 必须**顶格**（行首没有空格），否则解释器认不出来
+- 单引号 here-string `@'...'@` 不做变量插值，适合粘贴带 `$` 的字符串
+
+> 每次写多行 commit 我都会忘一次。**Claude 的默认模板是 bash heredoc**，在 PowerShell 下 100% 报错，需要手动改。
+
+### 12.2 大重构的救命设计：**Add, Don't Subtract**
+
+v3 要把「单轮密封」改成「最多 4 轮反应式竞价」。最容易犯的错是**直接改** `BidContext` / `decide_bid` / `_resolve_round`——v2 的 simulate + 已跑过的 demo 会瞬间全挂。
+
+我采用的模式（后来在 B1/B2/C 三个 commit 都救了我一次）：
+
+| v2（保留不动） | v3（新加） |
+| --- | --- |
+| `BidContext` | `BidContextV3`（继承式扩展，带 `to_v2()` 降级） |
+| `Bidder.bid_sealed()` | `Bidder.decide_bid_v3()`，默认 sub_round 1 fallback 回 `bid_sealed` |
+| `compute_ai_bid` | `compute_ai_bid_v3`（独立入口，game_seed 同一套） |
+| `_resolve_round` (quick) | `standard_engine.apply_sub_round_bids / check_item_end / finalize_item / advance` |
+| `cmd_bid` | `_cmd_bid_quick` + `_cmd_bid_standard` + mode dispatch |
+
+三条守则：
+1. **新增文件优先**：`standard_engine.py` 单独一个模块，v2 调用链零感知
+2. **cmd 层分流**：`cmd_bid → _is_standard_mode(state) ? _standard : _quick`，两条路径互不穿透
+3. **回归测试随新增一起写**：B1 加 30 个 state 测试，B2 加 34 个 AI 测试，C 加 19 个引擎测试——每次重构后 `pytest` 全绿才能 commit
+
+结果：v3 全部完成后，v2 quick 模式的 103 个老测试**一个没动，零修改**。demo 随时能切回 `--mode quick` 保命。
+
+### 12.3 State machine 真实 bug：history 里只存 `new_bids` 漏掉持位者 → squash 误判
+
+**现象**：standard 模式 sub_round 2，人类 $900 raise，艺姐（前领跑）持位 $761。
+- 预期：pool={人类 $900, 艺姐 $761}，比率 1.18× < 1.5× 阈值 → 继续 sub_round 3
+- 实际：人类一 raise 系统就直接宣告成交，完全没给 sub_round 3 机会
+
+**根因**：`apply_sub_round_bids` 写 history 时只存了 `new_bids = {人类: 900}`（本 sub_round 的新出价），**没存完整 pool**。`check_item_end` 读 `last["bids"]` 只看到人类一人，于是走了「池里只有领跑一人 → 碾压成立」的退路。
+
+艺姐的 $761 作为「领跑者持位」**既不是新出价也不在 withdrawn**，凭空消失了。
+
+**修复**：把 history 结构从
+```python
+{"sub_round": ..., "bids": {...new only...}, ...}
+```
+改成
+```python
+{
+  "sub_round": ...,
+  "new_bids": {...本 sub_round 新出价...},
+  "pool": {...新出价 + 前领跑者持位 bid...},  # ← 新增
+  "prev_leader": "艺姐", "prev_max_bid": 761,   # ← 新增，方便调试
+  ...
+}
+```
+然后 `check_item_end` 统一从 `last["pool"]` 读。
+
+**教训**：
+- **state transition function 必须记录决策所需的完整快照**，不能依赖「旁边那个字段还在」——因为字段在同一个 apply 里已经被覆盖了（`current_max_bid` 800 变 900 后，前一任 leader 的 761 就再也找不回来了）
+- **真实游戏 playthrough > 单元测试**：这个 bug 34 个 B2 AI 测试 + 30 个 B1 state 测试全绿的情况下依然溜过，是靠 `python game.py start/bid ...` 手动跑了一件才暴露
+- **暴露后立刻写回归测试**：`test_regression_held_leader_counted_in_squash_check` 用真实 seed=42 的数据锁死 1.18× 案例，下次再改 state 结构时立刻报警
+
+### 12.4 Simulate 跑 100 局巨慢：LLM 在 loop 里默默 fire
+
+v2 回归测试跑 `simulate --n-games 100` 发现卡了几分钟没动静。用 `Get-Process python` 看它确实在跑，CPU 也在烧——但就是慢。
+
+排查后发现：`AUCTION_KING_USE_LLM` 默认跟着当前 session 的 env 走。我前面调 `llm_narrator` 时设了 `$env:AUCTION_KING_USE_LLM = "1"`，后面 simulate 继承了这个值 → **每局结算都去请求一次 DeepSeek**，100 局 = 几百次 API 调用。
+
+修：
+
+```powershell
+# 跑 simulate 前临时关掉
+$env:AUCTION_KING_USE_LLM = "0"; python scripts/game.py simulate --n-games 100
+```
+
+后来我把它做成了习惯：**batch/simulate 开跑前永远显式设 `USE_LLM=0`**。
+
+---
+
+## 总结：如果再来一次，最重要的 9 条
 
 1. **装 OpenClaw 前**：确认 `node --version` ≥ 22.14 **且** `where.exe node` 第一条就是系统 Node，不是 Anaconda
 2. **API key**：用 `[Environment]::SetEnvironmentVariable(... .Trim(), "User")`，**长度验证**，**永不贴聊天**
@@ -611,7 +716,10 @@ if not _enabled and not _warned:
 4. **Discord**：**Message Content Intent 打开** + `groupPolicy=open` + `plugins.allow` 加进去；VPN 切模式**必重启 gateway**
 5. **Skill**：写在 `~/.openclaw/workspace/skills/`，SKILL.md description 要**强触发词**，用 `openclaw skills list` 验证 ready
 6. **Skill 部署**：**不要用 junction/symlink**（会被 OpenClaw 安全机制拒绝）；用 robocopy 真实复制 + 一键脚本 `tools/deploy-skill.ps1`；**env var 只认 `SetEnvironmentVariable(..., "User")` + 重启 gateway**
+7. **PowerShell 多行字符串**：`@"..."@` here-string，`@"` 后换行、`"@` 顶格；**不要用 bash heredoc 风格**
+8. **大重构 = Add, Don't Subtract**：新增 `BidContextV3` / `decide_bid_v3` / `standard_engine.py`，v2 路径零改动；cmd 层按 mode 分流；回归测试随新增一起写
+9. **State machine 写 history 要存完整 pool（不是只存增量）**；真实 playthrough 能挖出单元测试漏掉的 state 遗漏 bug；simulate/batch 前显式设 `USE_LLM=0`
 
 ---
 
-*最后更新：2026-04-18 —— `auction_king` 3.6b Discord 端到端跑通当晚补充第 11 节。*
+*最后更新：2026-04-18 晚 —— `auction_king` v3 C 阶段（standard 模式多轮竞价）跑通后补充第 12 节。*
