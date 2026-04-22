@@ -20,6 +20,7 @@ import random
 import statistics
 import sys
 from pathlib import Path
+from typing import Optional
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -44,6 +45,20 @@ from state import (
     new_state,
     save_state,
     session_exists,
+)
+from standard_engine import (
+    advance_to_next_item_or_end,
+    apply_sub_round_bids,
+    check_item_end,
+    collect_ai_bids,
+    finalize_item,
+    format_item_award,
+    format_new_item_header,
+    format_sub_round_prompt,
+    format_sub_round_reveal,
+    human_is_leading,
+    human_is_withdrawn,
+    increment_sub_round,
 )
 
 
@@ -226,8 +241,21 @@ def cmd_start(args: argparse.Namespace) -> str:
         budget=state["config"]["initial_budget"],
         opponents=opponents,
     )
+
+    if _is_standard_mode(state):
+        mode_blurb = (
+            f"🎯 模式：**standard (v3)** — 每件最多 {state['config']['max_sub_rounds_per_item']} "
+            f"轮竞价，碾压阈值 {'/'.join(str(t) for t in state['config']['squash_thresholds'] if t)}。"
+        )
+        header = format_new_item_header(state)
+        return f"{intro}\n\n{mode_blurb}\n{header}"
+
     header = _next_round_header(state, args.session)
     return f"{intro}\n\n{header}"
+
+
+def _is_standard_mode(state: dict) -> bool:
+    return state.get("config", {}).get("mode") == "standard"
 
 
 def cmd_status(args: argparse.Namespace) -> str:
@@ -237,15 +265,29 @@ def cmd_status(args: argparse.Namespace) -> str:
             "🏁 本局已结束。\n"
             f"运行 `python game.py scoreboard --session {args.session}` 查看排名。"
         )
-    header = _next_round_header(state, args.session)
+    if _is_standard_mode(state):
+        header = format_sub_round_prompt(state)
+    else:
+        header = _next_round_header(state, args.session)
     budgets = " | ".join(
         f"{p['display']} ${p['budget']}" for p in state["players"].values()
     )
     return f"{header}\n\n💰 当前预算：{budgets}"
 
 
+# ============================================================================
+# cmd_bid 分流
+# ============================================================================
+
 def cmd_bid(args: argparse.Namespace) -> str:
     state = load_state(args.session)
+    if _is_standard_mode(state):
+        return _cmd_bid_standard(state, args)
+    return _cmd_bid_quick(state, args)
+
+
+def _cmd_bid_quick(state: dict, args: argparse.Namespace) -> str:
+    """v2 单轮密封路径（quick 模式），逐字节保留原行为。"""
     if state["status"] != "awaiting_human_bid":
         return f"⚠️ 当前状态是 `{state['status']}`，不能出价。"
 
@@ -271,9 +313,113 @@ def cmd_bid(args: argparse.Namespace) -> str:
     return "\n".join(out)
 
 
+def _cmd_bid_standard(state: dict, args: argparse.Namespace) -> str:
+    """v3 多轮竞价路径。人类出价后级联跑 sub_round 直到需要再次输入或件结束。"""
+    if state["status"] != "awaiting_human_bid":
+        return f"⚠️ 当前状态是 `{state['status']}`，不能出价。"
+
+    human = state["players"][HUMAN_ID]
+    cis = state["current_item_state"]
+    sub_round = cis["sub_round"]
+
+    if human_is_withdrawn(state):
+        return "⚠️ 你已退出当前件，等待件结束。用 `advance` 让本件跑完。"
+    if sub_round > 1 and human_is_leading(state):
+        return (
+            "⚠️ 你当前正在领跑（自己不能加价给自己）。\n"
+            "   用 `advance --session ...` 让 AI 反应，或 `withdraw` 放弃位置。"
+        )
+
+    # 校验出价
+    if args.amount < 0:
+        return "⚠️ 出价必须 ≥ 0。"
+    if args.amount > human["budget"]:
+        return f"⚠️ 出价 ${args.amount} 超过你的预算 ${human['budget']}。"
+
+    if sub_round == 1:
+        item = _get_current_item(state)
+        if args.amount > 0 and args.amount < item.base_price:
+            return f"⚠️ Sub-round 1 出价需 ≥ 底价 ${item.base_price}（或出 0 弃拍）。"
+        human_action = int(args.amount) if args.amount > 0 else None
+    else:
+        min_raise = int(cis["current_max_bid"] * state["config"].get("min_raise_ratio", 1.05)) + 1
+        if args.amount < min_raise:
+            return (
+                f"⚠️ 最低加价 ${min_raise}（当前领跑 ${cis['current_max_bid']} × "
+                f"{state['config'].get('min_raise_ratio', 1.05)} + 1）。"
+                "或用 `withdraw` 退出。"
+            )
+        human_action = int(args.amount)
+
+    return _v3_process_and_cascade(state, args, human_action)
+
+
+def _v3_process_and_cascade(
+    state: dict,
+    args: argparse.Namespace,
+    first_human_action: Optional[int],
+) -> str:
+    """
+    执行人类动作 → 收 AI 反应 → 结算 sub_round → 判断件结束 →
+    继续 cascade 直到需要人类再次输入 / 件结束 / 整局结束。
+    """
+    out: list[str] = []
+    human_action: Optional[int] = first_human_action
+
+    while True:
+        cis = state["current_item_state"]
+        ai_decisions = collect_ai_bids(state)
+        apply_sub_round_bids(state, human_action, ai_decisions)
+        out.append(format_sub_round_reveal(state))
+
+        end_reason = check_item_end(state)
+        if end_reason:
+            result = finalize_item(state, end_reason)
+            out.append("")
+            out.append(format_item_award(state, result))
+            advance_to_next_item_or_end(state)
+            if state["status"] == "ended":
+                scores = compute_final_scores(state)
+                out.append("")
+                out.append(format_scoreboard(scores, state))
+                break
+            out.append(format_new_item_header(state))
+            break
+
+        increment_sub_round(state)
+
+        if human_is_leading(state):
+            human_action = None  # 人类领跑，自动持位，继续级联
+            out.append("")
+            out.append("（你在领跑，AI 继续反应…）")
+            continue
+        if human_is_withdrawn(state):
+            human_action = None  # 已退出，让 AI 之间互拼到结束
+            out.append("")
+            out.append("（你已退出，AI 继续…）")
+            continue
+
+        out.append("")
+        out.append(format_sub_round_prompt(state))
+        break
+
+    save_state(args.session, state)
+    return "\n".join(out)
+
+
+# ============================================================================
+# cmd_advance 分流
+# ============================================================================
+
 def cmd_advance(args: argparse.Namespace) -> str:
-    """玩家未出价时强制推进（视为 $0）。"""
     state = load_state(args.session)
+    if _is_standard_mode(state):
+        return _cmd_advance_standard(state, args)
+    return _cmd_advance_quick(state, args)
+
+
+def _cmd_advance_quick(state: dict, args: argparse.Namespace) -> str:
+    """quick 模式：玩家未出价时强制推进（视为 $0）。"""
     if state["status"] != "awaiting_human_bid":
         return f"⚠️ 当前状态 `{state['status']}`，不能推进。"
 
@@ -292,6 +438,53 @@ def cmd_advance(args: argparse.Namespace) -> str:
         out.append("")
         out.append(format_scoreboard(scores, state))
     return "\n".join(out)
+
+
+def _cmd_advance_standard(state: dict, args: argparse.Namespace) -> str:
+    """
+    standard 模式的 advance 语义：
+      - sub_round 1 且人类未出价 → 视为 0（弃拍）
+      - sub_round 2+ 人类领跑 → 合法「持位」
+      - sub_round 2+ 人类非领跑且未退出 → 等同 withdraw
+      - 已退出 → 让 AI 跑完本件
+    """
+    if state["status"] != "awaiting_human_bid":
+        return f"⚠️ 当前状态 `{state['status']}`，不能推进。"
+
+    cis = state["current_item_state"]
+    sub_round = cis["sub_round"]
+
+    if human_is_withdrawn(state):
+        human_action: Optional[int] = None
+    elif sub_round == 1:
+        human_action = None  # 弃拍 sub_round 1
+    elif human_is_leading(state):
+        human_action = None  # 自动持位
+    else:
+        human_action = None  # 等同退出
+
+    return _v3_process_and_cascade(state, args, human_action)
+
+
+# ============================================================================
+# cmd_withdraw（standard 专有）
+# ============================================================================
+
+def cmd_withdraw(args: argparse.Namespace) -> str:
+    state = load_state(args.session)
+    if not _is_standard_mode(state):
+        return "⚠️ `withdraw` 仅支持 standard 模式（quick 模式直接出 $0 弃拍）。"
+    if state["status"] != "awaiting_human_bid":
+        return f"⚠️ 当前状态 `{state['status']}`，不能退出。"
+    if human_is_withdrawn(state):
+        return "⚠️ 你已退出当前件。"
+    if human_is_leading(state):
+        return (
+            "⚠️ 你在领跑，主动退出会让次高者接位。确认？\n"
+            "   如果确认，请再发一次 `withdraw --confirm`（TODO：v3.1）"
+        )
+    # 标准流程：human_action=None 进入级联
+    return _v3_process_and_cascade(state, args, None)
 
 
 def cmd_scoreboard(args: argparse.Namespace) -> str:
@@ -457,8 +650,11 @@ def main() -> int:
     p_bid.add_argument("--session", required=True)
     p_bid.add_argument("--amount", type=int, required=True)
 
-    p_adv = sub.add_parser("advance", help="玩家超时，强推本轮（视为 $0）")
+    p_adv = sub.add_parser("advance", help="玩家超时，强推本轮（quick=视为$0；standard=持位/退出）")
     p_adv.add_argument("--session", required=True)
+
+    p_wd = sub.add_parser("withdraw", help="主动退出当前件（standard 模式专有）")
+    p_wd.add_argument("--session", required=True)
 
     p_sb = sub.add_parser("scoreboard", help="终局排名")
     p_sb.add_argument("--session", required=True)
@@ -481,6 +677,7 @@ def main() -> int:
         "status": cmd_status,
         "bid": cmd_bid,
         "advance": cmd_advance,
+        "withdraw": cmd_withdraw,
         "scoreboard": cmd_scoreboard,
         "simulate": cmd_simulate,
     }
