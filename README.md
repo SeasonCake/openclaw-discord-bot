@@ -1,8 +1,8 @@
-# OpenClaw Discord Bot (原 WeChat Bot)
+# OpenClaw Discord Bot
 
 个人 AI 助手项目：用 [OpenClaw](https://github.com/openclaw/openclaw) 框架在 Discord 里跑一个自定义 AI 代理，对接 DeepSeek API，逐步开发数据分析与交互式游戏类 skill。
 
-> 原计划走微信（[ClawBot 微信插件](https://github.com/Tencent/openclaw-weixin)），插件仅支持 iOS，项目作者用 Android，改道 Discord。迁移后 OpenClaw skill 代码完全不用改——架构 channel 与 skill 解耦。
+> 项目最初计划走微信（[ClawBot 微信插件](https://github.com/Tencent/openclaw-weixin)），但插件仅支持 iOS、项目作者用 Android，遂改道 Discord。迁移后 OpenClaw skill 代码完全不用改——架构上 channel 与 skill 解耦。
 
 ## 快速导航
 
@@ -106,7 +106,7 @@
 ## 项目结构
 
 ```
-openclaw-wechat-bot/
+openclaw-discord-bot/
 ├── README.md                ← 你在看（项目入口）
 ├── TROUBLESHOOTING.md       ← 踩坑 & 教训（复刻项目必读，含 junction/env 两大 skill 部署坑）
 ├── SETUP.md                 ← 阶段 1 理想路径

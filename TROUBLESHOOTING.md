@@ -513,7 +513,7 @@ session 会自动用 `+10000000000` 这个假号码开一个，不会污染 Disc
 
 ```powershell
 cmd /c mklink /J "C:\Users\shenc\.openclaw\workspace\skills\auction_king" `
-                 "c:\xiangmuyunxing\biancheng\2026\projects\openclaw-wechat-bot\skills\auction_king"
+                 "c:\xiangmuyunxing\biancheng\2026\projects\openclaw-discord-bot\skills\auction_king"
 # Junction created ...（看起来很成功）
 
 openclaw skills list --verbose
@@ -536,7 +536,7 @@ openclaw skills list --verbose
 Remove-Item "C:\Users\shenc\.openclaw\workspace\skills\auction_king" -Force
 
 robocopy `
-    "C:\xiangmuyunxing\biancheng\2026\projects\openclaw-wechat-bot\skills\auction_king" `
+    "C:\xiangmuyunxing\biancheng\2026\projects\openclaw-discord-bot\skills\auction_king" `
     "C:\Users\shenc\.openclaw\workspace\skills\auction_king" `
     /E /XD state __pycache__ .pytest_cache tests /NFL /NDL /NJH /NJS
 ```
