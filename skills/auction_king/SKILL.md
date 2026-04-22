@@ -26,10 +26,26 @@ Forbidden output patterns (every one of these was observed in the wild and broke
 - ❌ `Hmm, the session file seems to have been lost. Let me check if there's a state file...`（error recovery 时的推理泄漏，同样禁止）
 - ❌ `The sessions directory doesn't exist — the state was likely cleaned up. I need to restart the game...`
 - ❌ `Actually wait — the last message I sent was the "Sub-round 2" result...`（编造对话历史）
+- ❌ `This is an Auction King game query. Let me read the skill file and check the current game state.`（**工具调用前的 preamble**，特别要禁）
+- ❌ `The user is asking about the current game state. Let me check.`
+- ❌ `Let me load the skill.` / `让我先读一下 SKILL.md` / `我需要先检查...` / `先确认一下...`（任何"先做 X 再做 Y"的自言自语）
+
+### ZERO-PREAMBLE RULE
+
+The **first token** you emit on any turn must be **either**:
+- a tool call to the Auction King CLI, **or**
+- literal stdout text from a just-finished CLI run, **or**
+- one short ERROR RECOVERY line (see the rule below).
+
+**Nothing else.** No "let me", no "this is", no "好的", no "I'll", no "根据你说的". If the tool call is obvious from context (e.g., user typed a bare number and the last bot message ended with `最低加价 $X`), just call the tool — do NOT announce you're about to call it.
 
 **The ONLY thing the user sees from you is `stdout` of the CLI command, pasted verbatim.** If you catch yourself starting to type explanatory prose — stop, call the tool, paste stdout, done.
 
 If stdout is empty or you have no stdout to paste (e.g., you're asking for confirmation on an ambiguous input), your reply must be **one short question**, not an explanation of your thinking.
+
+### DUPLICATE MESSAGE DEDUPE
+
+If the user sends the **same text twice in a row** (e.g., `700` then `700` within the same turn, common on mobile Discord when the message seems to not have sent), treat as **one** command. Run the tool **once**, paste stdout **once**. Do not run twice. Do not comment on the duplication.
 
 ---
 
