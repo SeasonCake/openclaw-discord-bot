@@ -1,0 +1,16 @@
+product,category,price,stock,region
+Notebook,Stationery,12.50,45,North
+Pen,Stationery,3.25,200,North
+Chair,Furniture,89.99,12,South
+Desk,Furniture,249.00,8,South
+Lamp,Electronics,34.90,28,East
+Cable,Electronics,9.99,150,East
+Notebook,Stationery,12.50,30,West
+Pen,Stationery,,100,West
+Chair,Furniture,95.00,15,North
+Mouse,Electronics,19.99,67,South
+Keyboard,Electronics,45.00,42,East
+Desk,Furniture,,5,West
+Lamp,Electronics,34.90,33,North
+Pen,Stationery,3.25,180,South
+Chair,Furniture,92.50,10,East

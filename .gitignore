@@ -1,0 +1,39 @@
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+
+# === Node ===
+node_modules/
+.npm/
+npm-debug.log*
+.pnpm-store/
+
+# === OpenClaw local state ===
+.openclaw/
+openclaw.local.json
+*.openclaw.local.*
+
+# === Secrets ===
+.env
+.env.local
+*.key
+*_key.txt
+deepseek_key*
+openai_key*
+
+# === Generated output ===
+output/
+logs/
+*.log
+
+# === auction_king runtime ===
+skills/auction_king/state/*.json
+!skills/auction_king/state/.gitkeep
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
