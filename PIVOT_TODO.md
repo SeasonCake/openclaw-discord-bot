@@ -8,6 +8,8 @@
 
 ## 📄 简历改版清单（下次改简历时一次性处理）
 
+> ✅ **已完成于 2026-04**：两版简历（`resume_tech` 项目前置 / `resume_classic` 工作前置）均定稿，含 OpenClaw 双 Skill 项目、IBM SpaceX ML 细节（4 分类器 / GridSearchCV / ~83% 准确率）、EHS 工具集（4500+ 条隐患 / 9 车间 / 3D 双曲面）。下面清单保留作历史记录。
+
 ### 1. 求职意向行
 - **当前**：`EHS 相关岗位 / 初级数据分析 / 数据运营`
 - **目标**：删除"EHS 相关岗位"，改为 → `初级数据分析 / 数据工程 / AI 应用开发`
@@ -59,19 +61,18 @@
 - [x] **阶段 1**：OpenClaw 环境打通 ✅ 2026.04.22
 - [x] **阶段 1.5**：~~ClawBot WeChat~~（Android 不支持）→ 改 Discord channel 打通 ✅ 2026.04.22
 - [x] **阶段 2**：`csv_analyzer` skill 在 Discord 里可触发 + 返回正确 EDA 报告 ✅ 2026.04.22
-- [ ] **阶段 3**：`auction_king` 游戏 skill（单人 + 3 AI 对手）
+- [x] **阶段 3**：`auction_king` 游戏 skill（单人 + 3 AI 对手，v3 standard mode + 39+ pytest 单测）✅ 2026-04
 - [ ] **可选阶段 4**：`text_to_sql` skill（用 Meta capstone 的 Global Super Store 数据库）
 - [ ] Meta DB Engineer Capstone repo 更新 README + 加截图
 - [ ] Global Super Store Tableau 仪表盘截图整理
-- [ ] 本项目 TROUBLESHOOTING.md + README + skills 推 GitHub（考虑独立 repo 名：`openclaw-discord-bot` 或 `openclaw-data-skills`）
+- [x] 本项目 TROUBLESHOOTING.md + README + skills 推 GitHub ✅ 2026-04 → [`SeasonCake/openclaw-discord-bot`](https://github.com/SeasonCake/openclaw-discord-bot)
 
 ---
 
 ## 🌐 外部平台同步
 
-- [ ] **LinkedIn**：岗位方向改为"Data Analyst / AI Engineer"，skill tags 同步
-- [ ] **GitHub 个人简介**：移除 EHS 措辞，强调数据 + AI
-- [ ] **Coursera 主页**（如果分享）：Meta 证书 pin 到最显眼位置
+- [x] **LinkedIn**：Headline + About 改为 Data / AI 方向，portfolio post 置顶 ✅ 2026-04
+- [x] **GitHub 个人简介**：Profile README 改为 Data / AI 叙事 + 3 仓库链接 + 正确年份/数字 ✅ 2026-04
 
 ---
 

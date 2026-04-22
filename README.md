@@ -125,7 +125,7 @@ Each of these is the kind of problem a working engineer hits in their first week
 | 1. Environment + Discord bot wiring | ✅ Done |
 | 2. `csv_analyzer` skill | ✅ Done |
 | 3. `auction_king` skill (v2 quick + v3 standard) | ✅ Shipped |
-| 4. Portfolio polish (video + screenshots + LinkedIn) | 🔄 In progress |
+| 4. Portfolio polish (video + screenshots + LinkedIn) | ✅ Done |
 
 Detailed per-stage breakdown → [PIVOT_TODO.md](./PIVOT_TODO.md).
 

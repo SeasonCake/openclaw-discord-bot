@@ -125,7 +125,7 @@ openclaw gateway
 | 1. 环境 + Discord bot 打通 | ✅ |
 | 2. `csv_analyzer` 技能 | ✅ |
 | 3. `auction_king` 技能（v2 quick + v3 standard）| ✅ |
-| 4. 作品集化（视频 + 截图 + LinkedIn）| 🔄 进行中 |
+| 4. 作品集化（视频 + 截图 + LinkedIn）| ✅ 完成 |
 
 更细的分阶段 checklist → [PIVOT_TODO.md](./PIVOT_TODO.md)。
 
