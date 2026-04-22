@@ -706,9 +706,67 @@ $env:AUCTION_KING_USE_LLM = "0"; python scripts/game.py simulate --n-games 100
 
 后来我把它做成了习惯：**batch/simulate 开跑前永远显式设 `USE_LLM=0`**。
 
+### 12.5 SKILL.md 反泄漏：「不要做 X」不够，要贴真实泄漏文字当 ❌ 反例
+
+**现象**（v3 部署到 Discord 首测当晚）：
+
+```
+Qilindage — 6:25 PM
+@openclaw_bidking 算了
+
+openclaw_bidking APP — 6:26 PM
+The user said "500" — in the context of an active bidding round, treat as bid --amount 500.
+"算了" means they want to withdraw from this item in standard mode.
+```
+
+Bot 没调 `withdraw` 工具，**把自己的思考过程原文发到 Discord 了**，每轮还得等 ~1 分钟。用户正确诊断：速度慢和输出冗余是同一个问题的两面——LLM 花额外 token 生成元推理 → 既慢又丑。
+
+**SKILL.md 里明明早就写了**：
+
+> Paste stdout back verbatim. Do NOT add your own commentary.
+
+但这句话太抽象，agent 模型把「不加评论」理解成「不加 AI 角色台词」，**没意识到自己的 chain-of-thought 也是 commentary**。
+
+**修复姿势**（不是加更多规则，是加**具体反例**）：
+
+```markdown
+## ⚠️ IRON RULE — NO REASONING TEXT EVER
+
+**You are a silent router. Users must NEVER see your reasoning.**
+
+Forbidden output patterns (every one of these was observed in the wild):
+- ❌ `The user said "500" — treat as bid --amount 500.`
+- ❌ `"算了" means they want to withdraw from this item in standard mode.`
+- ❌ `The user wants to start a standard mode game. Let me load the skill.`
+- ❌ `好的，我来帮你开局`
+- ❌ `看起来 Kai 领先了`
+- ❌ `Based on the context, I'll run...`
+
+The ONLY thing the user sees from you is `stdout` of the CLI command, pasted verbatim.
+```
+
+把每条观察到的真实泄漏文字**原文贴进去**做 ❌ 反例，比抽象的 "no commentary" 强十倍。部署后立刻验证：
+
+```
+@openclaw_bidking 算了，太贵了
+openclaw_bidking APP — 6:39 PM
+Sub-round 2 揭晓（晚清鼻烟壶）
+  · Kai：$618（持位） 👑
+  · 退出：你、Miles、老周头
+...
+```
+
+泄漏消失、withdraw 正确触发、响应时间从 ~60s 降到 ~15s。
+
+**教训**：
+- **LLM skill routing**：抽象规则（"be concise / don't comment"）对 agent 模型效果差；**贴真实 bad output 作 ❌ 示范**效果最强——模型对「不要生成长得像这样的东西」比「不要做 X」更敏感
+- **Discord 上看到的意外文字 = 免费的 bad example 库**：每次 bot 说了不该说的话，复制那句话贴进 SKILL.md 顶部，下一次就修掉了
+- **UX 问题和延迟问题常常同源**：LLM 多说话 → Discord 显示多出来的文字 + token 生成时间增加。砍掉前者自动修后者
+- **扩触发词是配套动作**：这次加了 `算了 / 不要了 / 太贵了 / 不玩了` 进 withdraw 映射。如果只加 IRON RULE 不加触发词，LLM 还是会在「没识别到这是 withdraw」时兜到推理兜底
+
 ---
 
-## 总结：如果再来一次，最重要的 9 条
+## 总结：如果再来一次，最重要的 10 条
 
 1. **装 OpenClaw 前**：确认 `node --version` ≥ 22.14 **且** `where.exe node` 第一条就是系统 Node，不是 Anaconda
 2. **API key**：用 `[Environment]::SetEnvironmentVariable(... .Trim(), "User")`，**长度验证**，**永不贴聊天**
@@ -719,7 +777,8 @@ $env:AUCTION_KING_USE_LLM = "0"; python scripts/game.py simulate --n-games 100
 7. **PowerShell 多行字符串**：`@"..."@` here-string，`@"` 后换行、`"@` 顶格；**不要用 bash heredoc 风格**
 8. **大重构 = Add, Don't Subtract**：新增 `BidContextV3` / `decide_bid_v3` / `standard_engine.py`，v2 路径零改动；cmd 层按 mode 分流；回归测试随新增一起写
 9. **State machine 写 history 要存完整 pool（不是只存增量）**；真实 playthrough 能挖出单元测试漏掉的 state 遗漏 bug；simulate/batch 前显式设 `USE_LLM=0`
+10. **SKILL.md 反 LLM 泄漏**：抽象规则（"no commentary"）无效；把真实观察到的 bad output 原文贴进去作 ❌ 反例效果最强；UX 和延迟常常同源，砍掉冗余推理同时修两件事
 
 ---
 
-*最后更新：2026-04-18 晚 —— `auction_king` v3 C 阶段（standard 模式多轮竞价）跑通后补充第 12 节。*
+*最后更新：2026-04-18 晚 —— `auction_king` v3 C 阶段（standard 模式多轮竞价）+ Discord 首测反 thinking-leak 修复后补充第 12 节（含 12.5）。*
