@@ -51,11 +51,11 @@ Fully deterministic Python — no prompt-engineering roulette.
 
 ### 2. `auction_king` — multi-round auction game with 3 AI opponents
 
-- **5 AI personalities** (pick 3 per game): *Zhou the steady · Kai the FOMO · Sister Yi the classy · Gui the trapper · Miles the sniper*
-- **Personality-aware bidding**: trappers bait-and-switch, snipers wait until round 3, FOMO chases the leaderboard
+- **5 deterministic bidder personas** (draw 3 per game): *Zhou the steady · Kai the FOMO · Sister Yi the classy · Gui the trapper · Miles the sniper*
+- **Personality-aware bidding (pure Python)**: trappers bait-and-switch, snipers wait until round 3, FOMO chases the leaderboard — all prices come from `ai_bidders.py` rules (**zero LLM in bid decisions**)
 - **Narration layer** (DeepSeek): opening MC, per-round AI commentary, final sardonic wrap-up; falls back to templates if API key is missing — won't crash
 - **Multi-mode**: `quick` (v2, sealed single-round) and `standard` (v3, 4 sub-rounds with `withdraw` / budget reuse / re-auction on tie)
-- **State machine**: persists every turn, sessions resumable by ID, 39 unit tests covering bidding and narration layers
+- **State machine**: persists every turn, sessions resumable by ID, **122** unit tests covering bidding rules, state machine, standard-mode engine, and LLM narrator fallbacks
 
 ---
 
@@ -159,7 +159,7 @@ openclaw-discord-bot/
         ├── SKILL.md            ← 4 named LLM guardrails
         ├── data/items.json     ← 16 items + 3 warehouses
         ├── scripts/            ← game.py + ai_bidders.py + llm_narrator.py + ...
-        └── tests/              ← 39 unit tests
+        └── tests/              ← 122 unit tests
 ```
 
 ---

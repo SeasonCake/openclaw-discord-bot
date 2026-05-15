@@ -57,7 +57,7 @@ python scripts\game.py simulate --n-games 100 --human-strategy auto --seed 1
 ### 单元测试
 
 ```powershell
-python -m pytest tests -v    # 39 tests: 15 AI 出价 + 24 LLM narrator
+python -m pytest tests -v    # 122 tests: AI 出价规则、状态机、standard 引擎、LLM narrator 回退等
 ```
 
 ---

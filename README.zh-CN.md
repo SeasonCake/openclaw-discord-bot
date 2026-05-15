@@ -51,11 +51,11 @@ https://github.com/user-attachments/assets/d48fbde1-1160-4886-adc0-20be6bf00876
 
 ### 2. `auction_king` · 多轮 AI 竞价游戏
 
-- **5 个 AI 人设**（每局随机抽 3）：*稳健派老周头 · FOMO Kai · 知性艺姐 · 陷阱阿鬼 · 狙击手 Miles*
-- **人设驱动决策**：阿鬼前抬后撤、Miles 前装睡后狙击、Kai 永远怕错过——**决策层面真的不同**，不只是台词换皮
-- **台词层**（DeepSeek 驱动）：开场主持词 / 每轮 AI 反应 / 终局毒舌总结；API key 缺失时自动 fallback 到模板，不崩
+- **5 种确定性出价人格**（每局从池中随机抽 3 名对手）：*稳健派老周头 · FOMO Kai · 体面艺姐 · 陷阱型阿鬼 · 狙击型 Miles*
+- **人设体现在出价规则（零 LLM）**：报价由 `ai_bidders.py` 公式引擎计算——阿鬼前抬后撤、Miles 前松后紧、Kai FOMO 追高；**与台词层解耦**，避免「LLM 在替你出价」的误解
+- **台词层**（DeepSeek / 模板）：开场主持词 / 每轮 AI 反应 / 终局总结；API key 缺失时自动 fallback，不崩
 - **双模式**：`quick`（v2 单轮暗标）和 `standard`（v3 多轮 + `withdraw` + 预算复用 + 流拍重拍）
-- **状态机**：每回合持久化，session ID 可恢复；39 个单元测试覆盖出价逻辑和台词层
+- **状态机**：每回合持久化，session ID 可恢复；**122** 个单元测试覆盖出价规则、状态机、standard 模式引擎与 LLM 解说回退分支
 
 ---
 
@@ -159,7 +159,7 @@ openclaw-discord-bot/
         ├── SKILL.md            ← 4 条命名 LLM 护栏
         ├── data/items.json     ← 16 件单品 + 3 个仓库
         ├── scripts/            ← game.py + ai_bidders.py + llm_narrator.py + ...
-        └── tests/              ← 39 个单元测试
+        └── tests/              ← 122 个单元测试
 ```
 
 ---

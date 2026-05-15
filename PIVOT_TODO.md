@@ -61,7 +61,7 @@
 - [x] **阶段 1**：OpenClaw 环境打通 ✅ 2026.04.22
 - [x] **阶段 1.5**：~~ClawBot WeChat~~（Android 不支持）→ 改 Discord channel 打通 ✅ 2026.04.22
 - [x] **阶段 2**：`csv_analyzer` skill 在 Discord 里可触发 + 返回正确 EDA 报告 ✅ 2026.04.22
-- [x] **阶段 3**：`auction_king` 游戏 skill（单人 + 3 AI 对手，v3 standard mode + 39+ pytest 单测）✅ 2026-04
+- [x] **阶段 3**：`auction_king` 游戏 skill（单人 + 从 5 人格池抽 3 名 AI，v3 standard mode + **122** pytest 单测）✅ 2026-04
 - [ ] **可选阶段 4**：`text_to_sql` skill（用 Meta capstone 的 Global Super Store 数据库）
 - [ ] Meta DB Engineer Capstone repo 更新 README + 加截图
 - [ ] Global Super Store Tableau 仪表盘截图整理
