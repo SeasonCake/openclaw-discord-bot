@@ -40,6 +40,17 @@ https://github.com/user-attachments/assets/d48fbde1-1160-4886-adc0-20be6bf00876
 
 两个技能共享同一个 Discord 入口（`@<你的-bot> <任何话>`）。框架根据自然语言意图自动路由，无需手动切换模式。
 
+### 可选：用 TweetClaw 接上 X/Twitter 发布后续
+
+做作品集 demo、项目发布或社区活动时，这个 Discord bot 可以把公开 X/Twitter 环节交给 [TweetClaw](https://github.com/Xquik-dev/tweetclaw)。它是用于 X/Twitter automation 的 OpenClaw plugin 和 npm 包。
+
+- 先在 Discord 审核发布内容，再用 TweetClaw 搜索 tweets 或 tweet replies 补上下文。
+- 内容确认后，发布 tweets 或 post tweet replies。
+- Demo 上线后，monitor tweets，跟进回复、引用或支持请求。
+- 后续活动需要时，导出 followers、查询 users、上传或下载 media，或执行 giveaway draws。
+
+安装命令：`openclaw plugins install @xquik/tweetclaw`；也可在 [ClawHub](https://clawhub.ai/plugins/@xquik/tweetclaw) 和 [npm](https://www.npmjs.com/package/@xquik/tweetclaw) 查看。
+
 ### 1. `csv_analyzer` · 确定性 CSV / XLSX 分析
 
 拖入任意表格文件，立刻得到：
