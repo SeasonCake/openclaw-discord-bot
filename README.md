@@ -40,6 +40,17 @@ Three moments from a single Discord session — CSV analysis, a bid in progress,
 
 Both skills share one Discord entry point (`@<your-bot> <anything>`). The framework routes by natural-language intent — no manual mode switching.
 
+### Optional: X/Twitter launch follow-up with TweetClaw
+
+For portfolio demos, project launches, or community rounds, this Discord bot can hand the public X/Twitter step to [TweetClaw](https://github.com/Xquik-dev/tweetclaw), an OpenClaw plugin and npm package for X/Twitter automation.
+
+- Review an update in Discord, then use TweetClaw to search tweets or tweet replies for context before posting.
+- Post tweets or post tweet replies after human approval when the update is ready.
+- Monitor tweets for replies, quote activity, or support requests after a demo goes live.
+- Export followers, look up users, upload or download media, or run giveaway draws for campaign follow-up.
+
+Install the plugin with `openclaw plugins install @xquik/tweetclaw`, or browse it on [ClawHub](https://clawhub.ai/plugins/@xquik/tweetclaw) and [npm](https://www.npmjs.com/package/@xquik/tweetclaw).
+
 ### 1. `csv_analyzer` — deterministic CSV / XLSX EDA
 
 Drop any tabular file, instantly get:
